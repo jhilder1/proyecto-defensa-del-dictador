@@ -1,0 +1,59 @@
+{
+  "scenario_name": "Escenario 1: Básico Pedagógico",
+  "config": {
+    "initial_budget": 1200.0,
+    "beta_elevation": 0.1,
+    "alpha_danger": 1.0,
+    "d0_normalization": 50.0,
+    "helicopter_cost": 150.0,
+    "max_time_limit": 300.0
+  },
+  "elevated_network": {
+    "nodes": [
+      { "id": "Base", "x": 60, "y": 80, "z": 2.0, "type": "Base" },
+      { "id": "H1", "x": 60, "y": 240, "z": 2.0, "type": "Helipuerto" },
+      { "id": "N1", "x": 180, "y": 80, "z": 5.0, "type": "Tránsito" },
+      { "id": "T1", "x": 200, "y": 220, "z": 10.0, "type": "Candidato", "surveillance_radius": 85.0 },
+      { "id": "T2", "x": 380, "y": 80, "z": 12.0, "type": "Candidato", "surveillance_radius": 95.0 },
+      { "id": "T3", "x": 500, "y": 220, "z": 8.0, "type": "Candidato", "surveillance_radius": 80.0 },
+      { "id": "N2", "x": 380, "y": 220, "z": 6.0, "type": "Tránsito" }
+    ],
+    "edges": [
+      { "u": "Base", "v": "N1", "foot_time": 12.0, "moto_time": 4.0, "is_bridge": false },
+      { "u": "Base", "v": "H1", "foot_time": 16.0, "moto_time": 5.0, "is_bridge": false },
+      { "u": "N1", "v": "T1", "foot_time": 14.0, "moto_time": 5.0, "is_bridge": true, "max_resistance": 3, "reconstruction_duration": 25.0 },
+      { "u": "N1", "v": "T2", "foot_time": 20.0, "moto_time": 7.0, "is_bridge": false },
+      { "u": "T1", "v": "N2", "foot_time": 18.0, "moto_time": 6.0, "is_bridge": false },
+      { "u": "T2", "v": "N2", "foot_time": 14.0, "moto_time": 5.0, "is_bridge": true, "max_resistance": 2, "reconstruction_duration": 30.0 },
+      { "u": "N2", "v": "T3", "foot_time": 12.0, "moto_time": 4.0, "is_bridge": false },
+      { "u": "T2", "v": "T3", "foot_time": 30.0, "moto_time": 10.0, "is_bridge": false }
+    ]
+  },
+  "maze_network": {
+    "nodes": [
+      { "id": "IN", "x": 100, "y": 380, "is_entry": true, "is_exit": false },
+      { "id": "M1", "x": 220, "y": 380, "is_entry": false, "is_exit": false },
+      { "id": "M2", "x": 220, "y": 280, "is_entry": false, "is_exit": false },
+      { "id": "M3", "x": 380, "y": 280, "is_entry": false, "is_exit": false },
+      { "id": "M4", "x": 380, "y": 380, "is_entry": false, "is_exit": false },
+      { "id": "M5", "x": 520, "y": 280, "is_entry": false, "is_exit": false },
+      { "id": "OUT", "x": 640, "y": 380, "is_entry": false, "is_exit": true }
+    ],
+    "corridors": [
+      { "u": "IN", "v": "M1", "length": 120.0, "speed": 12.0 },
+      { "u": "M1", "v": "M2", "length": 100.0, "speed": 10.0 },
+      { "u": "M2", "v": "M3", "length": 160.0, "speed": 10.0 },
+      { "u": "M1", "v": "M4", "length": 160.0, "speed": 8.0 },
+      { "u": "M3", "v": "M4", "length": 100.0, "speed": 10.0 },
+      { "u": "M3", "v": "M5", "length": 140.0, "speed": 14.0 },
+      { "u": "M4", "v": "OUT", "length": 260.0, "speed": 12.0 },
+      { "u": "M5", "v": "OUT", "length": 150.0, "speed": 10.0 }
+    ]
+  },
+  "convoy": [
+    { "type": "Tanque", "hp": 200.0, "reward": 150 },
+    { "type": "Camión", "hp": 100.0, "reward": 100 },
+    { "type": "Robot", "hp": 50.0, "reward": 50 }
+  ]
+}
+

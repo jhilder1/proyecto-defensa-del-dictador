@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Simulación de Defensa Estratégica - General P. Tardo</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+  <header>
+    <h1>
+      🛡️ Simulación de Defensa Estratégica
+      <span class="badge">Etapa 2: Planificación Voraz & MST</span>
+    </h1>
+    <div id="scenarioName" style="color: var(--text-muted); font-size: 0.9rem;">Cargando...</div>
+  </header>
+
+  <div class="layout-container">
+    <!-- Sidebar Controls -->
+    <aside class="sidebar">
+      <!-- Escenarios -->
+      <div class="panel-card">
+        <div class="panel-title">📂 Gestión de Escenarios</div>
+        <button id="btnLoadDefault" class="btn btn-secondary">
+          <span>🔄</span> Cargar Escenario Básico
+        </button>
+        <button id="btnUpload" class="btn btn-secondary">
+          <span>📤</span> Subir Archivo JSON
+        </button>
+        <input type="file" id="fileInput" accept=".json" style="display: none;">
+      </div>
+
+      <!-- Planificación Defensiva -->
+      <div class="panel-card">
+        <div class="panel-title">📐 Algoritmos de Planificación</div>
+
+        <button id="btnCalcMst" class="btn btn-accent">
+          <span>🌲</span> Calcular MST en G_E (Kruskal)
+        </button>
+
+        <div style="margin-top: 15px; border-top: 1px solid var(--border-color); padding-top: 12px;">
+          <div class="form-group">
+            <label for="inputKTowers">Número de Torres (K):</label>
+            <input type="number" id="inputKTowers" class="form-control" value="3" min="1" max="10">
+          </div>
+          <div class="form-group">
+            <label for="inputD0">Normalización Distancia (D₀):</label>
+            <input type="number" id="inputD0" class="form-control" value="50.0" step="5.0">
+          </div>
+
+          <button id="btnSelectTowers" class="btn btn-gold">
+            <span>🎯</span> Seleccionar Torres Voraz S(p)
+          </button>
+        </div>
+      </div>
+
+      <!-- Parámetros de Simulación -->
+      <div class="panel-card">
+        <div class="panel-title">⚙️ Parámetros & Fondos</div>
+        <div style="font-size: 0.8rem; line-height: 1.6; color: var(--text-muted);">
+          <div>Presupuesto: <b id="statBudget" style="color: var(--accent-green);">$0</b></div>
+          <div>Límite por torre: <b style="color: var(--text-main);">Máx 3 soldados</b></div>
+          <div>Grafo Humano: <b style="color: var(--accent-cyan);">Red Elevada (G_E)</b></div>
+          <div>Grafo Convoy: <b style="color: var(--accent-purple);">Laberinto (G_M)</b></div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main Visualizer Area -->
+    <main class="main-viewport">
+      <div class="canvas-toolbar">
+        <div class="stats-bar">
+          <div class="stat-item">
+            <span>Nodos G_E:</span>
+            <span id="statGeNodes" class="stat-val">0</span>
+          </div>
+          <div class="stat-item">
+            <span>Corredores G_M:</span>
+            <span id="statGmCorridors" class="stat-val">0</span>
+          </div>
+          <div class="stat-item">
+            <span>Torres Activas:</span>
+            <span id="statActiveTowers" class="stat-val" style="color: var(--accent-gold);">0</span>
+          </div>
+          <div class="stat-item">
+            <span>Cobertura Laberinto:</span>
+            <span id="statCoverage" class="stat-val" style="color: var(--accent-green);">0%</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="canvas-container">
+        <canvas id="simCanvas"></canvas>
+
+        <!-- Legend Overlay -->
+        <div class="legend-box">
+          <div style="font-weight: bold; color: var(--accent-cyan); margin-bottom: 4px;">Leyenda Visual</div>
+          <div class="legend-item">
+            <div class="legend-indicator" style="background: #238636; border: 1px solid #7ee787;"></div>
+            <span>Base Militar</span>
+          </div>
+          <div class="legend-item">
+            <div class="legend-indicator" style="background: #6e40c9;"></div>
+            <span>Helipuerto [H]</span>
+          </div>
+          <div class="legend-item">
+            <div class="legend-indicator" style="background: #d29922; border: 1px dashed #f0883e;"></div>
+            <span>Candidato / Torre Activa</span>
+          </div>
+          <div class="legend-item">
+            <div class="legend-indicator" style="background: #58a6ff; box-shadow: 0 0 4px #58a6ff;"></div>
+            <span>Árbol MST (T_E)</span>
+          </div>
+          <div class="legend-item">
+            <div class="legend-indicator" style="background: #d29922; border-top: 2px dashed #f85149;"></div>
+            <span>Puente Dinámico</span>
+          </div>
+          <div class="legend-item">
+            <div class="legend-indicator" style="background: #3fb950;"></div>
+            <span>Entrada Laberinto (IN)</span>
+          </div>
+          <div class="legend-item">
+            <div class="legend-indicator" style="background: #f85149;"></div>
+            <span>Salida Laberinto (OUT)</span>
+          </div>
+          <div class="legend-item">
+            <div class="legend-indicator" style="background: rgba(63, 185, 80, 0.4); border: 1px solid #3fb950;"></div>
+            <span>Corredor Vigilado / Radio R_V</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Bottom Panel (Audit Log) -->
+      <section class="bottom-panel">
+        <div class="bottom-header">
+          <span>📋 Bitácora de Decisiones & Auditoría de Algoritmos</span>
+          <button id="btnClearLog" style="background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 0.75rem;">Limpiar Bitácora</button>
+        </div>
+        <div id="logViewer" class="log-content"></div>
+      </section>
+    </main>
+  </div>
+
+  <script src="/static/js/api.js"></script>
+  <script src="/static/js/renderer_2d.js"></script>
+  <script src="/static/js/app.js"></script>
+</body>
+</html>
+
