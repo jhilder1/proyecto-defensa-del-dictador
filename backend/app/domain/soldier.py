@@ -1,7 +1,8 @@
 """Domain models for defense soldiers (Infantería, Francotirador, Artillero)."""
 
 from enum import Enum
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, Union, Tuple
+import math
 import uuid
 
 
@@ -85,4 +86,81 @@ class Soldier:
             "location_node_id": self.location_node_id,
             "cooldown": round(self.cooldown, 2),
         }
+
+
+class DefenseUnit:
+    """Represents an active deployed defense unit with spatial coordinates."""
+
+    def __init__(
+        self,
+        soldier_type: Union[SoldierType, str],
+        x: float,
+        y: float,
+        z: float = 0.0,
+        effective_range: Optional[float] = None,
+        unit_id: Optional[str] = None,
+        tower_id: Optional[str] = None,
+        beta: float = 0.1,
+    ):
+        self.id = unit_id or f"defense_{uuid.uuid4().hex[:6]}"
+        self.tower_id = tower_id
+        self.x = float(x)
+        self.y = float(y)
+        self.z = float(z)
+
+        # Match soldier type
+        if isinstance(soldier_type, SoldierType):
+            self.soldier_type = soldier_type
+        else:
+            raw = str(soldier_type).lower()
+            if "inf" in raw:
+                self.soldier_type = SoldierType.INFANTRY
+            elif "snip" in raw or "franc" in raw:
+                self.soldier_type = SoldierType.SNIPER
+            elif "gun" in raw or "art" in raw:
+                self.soldier_type = SoldierType.GUNNER
+            else:
+                self.soldier_type = SoldierType.INFANTRY
+
+        cfg = SOLDIER_CONFIG[self.soldier_type]
+        self.damage = cfg["damage"]
+        self.fire_rate = cfg["fire_rate"]
+        self.base_range = cfg["base_range"]
+        self.is_area = cfg["is_area"]
+        self.damage_rate = self.damage * self.fire_rate
+
+        if effective_range is not None:
+            self.effective_range = float(effective_range)
+        else:
+            self.effective_range = self.base_range * (1.0 + float(beta) * max(0.0, self.z))
+
+    @property
+    def is_infantry(self) -> bool:
+        return self.soldier_type == SoldierType.INFANTRY
+
+    @property
+    def is_sniper(self) -> bool:
+        return self.soldier_type == SoldierType.SNIPER
+
+    @property
+    def is_gunner(self) -> bool:
+        return self.soldier_type == SoldierType.GUNNER
+
+    def can_reach(self, point: Tuple[float, float]) -> bool:
+        """Checks if point (x, y) is within effective range."""
+        dist = math.hypot(self.x - point[0], self.y - point[1])
+        return dist <= self.effective_range + 1e-9
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "id": self.id,
+            "tower_id": self.tower_id,
+            "type": self.soldier_type.value,
+            "x": self.x,
+            "y": self.y,
+            "z": self.z,
+            "effective_range": round(self.effective_range, 2),
+            "damage_rate": round(self.damage_rate, 2),
+        }
+
 

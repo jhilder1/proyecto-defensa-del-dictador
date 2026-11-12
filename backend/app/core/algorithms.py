@@ -315,3 +315,123 @@ def select_towers_greedy(
         ),
     }
 
+
+def dijkstra_reactive(
+    graph: MazeGraph,
+    start_node: str,
+    target_node: str,
+    forbidden_edge: Optional[Tuple[str, str]] = None,
+    forbidden_first_step: Optional[str] = None,
+) -> Optional[Tuple[float, List[str]]]:
+    """Computes the shortest path on MazeGraph (G_M) using reactive weights w(e).
+    
+    Uses custom PriorityQueue (Min-Heap).
+    Deterministic tie-breaking:
+        1. Elements in queue are tuples (dist, node_id, parent_id).
+        2. Neighbors are iterated in sorted lexicographical order.
+        3. If two paths to node v have equal distance (within 1e-9), deterministically
+           prefer the candidate parent u with smaller lexicographical ID (u < parent[v]).
+           
+    Parameters:
+        graph: MazeGraph instance with nodes and reactive corridor weights.
+        start_node: Starting node ID in G_M.
+        target_node: Destination node ID in G_M.
+        forbidden_edge: Optional edge (u, v) forbidden from traversal.
+        forbidden_first_step: Optional neighbor node ID forbidden as immediate first step.
+        
+    Returns:
+        Tuple of (total_reactive_cost, path_list) if target is reachable, else None.
+    """
+    start_node = str(start_node)
+    target_node = str(target_node)
+
+    if not graph.has_node(start_node) or not graph.has_node(target_node):
+        return None
+
+    if start_node == target_node:
+        return (0.0, [start_node])
+
+    # Normalize forbidden edge
+    f_u: Optional[str] = None
+    f_v: Optional[str] = None
+    if forbidden_edge is not None:
+        f_u = str(forbidden_edge[0])
+        f_v = str(forbidden_edge[1])
+
+    dist: Dict[str, float] = {node: float("inf") for node in graph.nodes}
+    parent: Dict[str, Optional[str]] = {node: None for node in graph.nodes}
+
+    dist[start_node] = 0.0
+
+    pq = PriorityQueue[Tuple[float, str, str]]()
+    pq.push((0.0, start_node, ""))
+
+    while not pq.is_empty():
+        d, u, p = pq.pop()
+
+        if d > dist[u] + 1e-9:
+            continue
+
+        if u == target_node:
+            break
+
+        for v in sorted(graph.neighbors(u)):
+            # Check forbidden edge constraint
+            if f_u is not None and f_v is not None:
+                if (u == f_u and v == f_v) or (u == f_v and v == f_u):
+                    continue
+
+            # Check forbidden first step constraint
+            if forbidden_first_step is not None and u == start_node and v == str(forbidden_first_step):
+                continue
+
+            # Extract reactive weight
+            corridor = graph.get_corridor(u, v)
+            if corridor is not None:
+                w = corridor.reactive_weight
+            else:
+                edge_data = graph.get_edge_data(u, v) or {}
+                w = float(edge_data.get("reactive_weight", edge_data.get("base_time", edge_data.get("length", 1.0))))
+
+            new_dist = d + w
+
+            if new_dist < dist[v] - 1e-9:
+                dist[v] = new_dist
+                parent[v] = u
+                pq.push((new_dist, v, u))
+            elif abs(new_dist - dist[v]) <= 1e-9:
+                if parent[v] is None or u < parent[v]:
+                    parent[v] = u
+                    pq.push((new_dist, v, u))
+
+    if dist[target_node] == float("inf"):
+        return None
+
+    # Reconstruct path from target to start
+    path: List[str] = []
+    curr: Optional[str] = target_node
+    visited_nodes: Set[str] = set()
+
+    while curr is not None:
+        path.append(curr)
+        if curr == start_node:
+            break
+        if curr in visited_nodes:
+            # Cycle detected during reconstruction; abort
+            return None
+        visited_nodes.add(curr)
+        curr = parent.get(curr)
+
+    path.reverse()
+
+    if not path or path[0] != start_node:
+        return None
+
+    return (dist[target_node], path)
+
+
+# Re-export hazard calculation functions for algorithm-level consumers
+from app.services.hazard_service import calculate_point_damage, calculate_corridor_hazard
+
+
+

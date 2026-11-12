@@ -32,10 +32,15 @@ def load_scenario(scenario_data: ScenarioDataSchema) -> Dict[str, Any]:
 def load_default_scenario(scenario_file: Optional[str] = "scenario_1_basic.json") -> Dict[str, Any]:
     """Loads a pre-packaged default scenario from the backend data directory."""
     try:
-        base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        data_path = os.path.join(base_dir, "data", scenario_file or "scenario_1_basic.json")
+        backend_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
+        clean_filename = os.path.basename(scenario_file or "scenario_1_basic.json")
+        data_path = os.path.join(backend_dir, "data", clean_filename)
+        if not os.path.exists(data_path):
+            raise HTTPException(status_code=404, detail=f"Scenario file '{clean_filename}' not found in data directory")
         service = ScenarioService.get_instance()
         return service.load_from_file(data_path)
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 

@@ -1,7 +1,18 @@
 """FastAPI main application entrypoint."""
 
 import os
+import sys
+import warnings
 from contextlib import asynccontextmanager
+
+# Suppress upstream starlette pending deprecation warning regarding python_multipart
+warnings.filterwarnings("ignore", category=PendingDeprecationWarning, module=r"starlette\.formparsers")
+warnings.filterwarnings("ignore", message=r".*import python_multipart.*", category=PendingDeprecationWarning)
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+if BASE_DIR not in sys.path:
+    sys.path.insert(0, BASE_DIR)
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -9,9 +20,9 @@ from fastapi.responses import FileResponse
 
 from app.api.controllers.scenario_controller import router as scenario_router
 from app.api.controllers.planning_controller import router as planning_router
+from app.api.controllers.simulation_controller import router as simulation_router
 from app.services.scenario_service import ScenarioService
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(BASE_DIR)
 FRONTEND_DIR = os.path.join(PROJECT_ROOT, "frontend")
 
@@ -51,6 +62,7 @@ app.add_middleware(
 # Include API Routers
 app.include_router(scenario_router)
 app.include_router(planning_router)
+app.include_router(simulation_router)
 
 # Mount frontend
 if os.path.exists(FRONTEND_DIR):

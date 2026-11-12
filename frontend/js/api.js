@@ -64,6 +64,73 @@ const api = {
     }
     return res.json();
   },
+
+  // ==========================================
+  // Stage 3: Simulation & Reactive Navigation
+  // ==========================================
+
+  async calculateHazards(alpha = 1.0) {
+    const res = await fetch(`${API_BASE_URL}/api/simulation/calculate-hazards`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ alpha_danger: parseFloat(alpha) }),
+    });
+    if (!res.ok) {
+      throw new Error(`Error ${res.status}: ${await res.text()}`);
+    }
+    return res.json();
+  },
+
+  async calculateCorridorHazards(alpha = 1.0) {
+    return this.calculateHazards(alpha);
+  },
+
+  async convoyStep(alpha = 1.0) {
+    const res = await fetch(`${API_BASE_URL}/api/simulation/convoy/step`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ alpha_danger: parseFloat(alpha) }),
+    });
+    if (!res.ok) {
+      throw new Error(`Error ${res.status}: ${await res.text()}`);
+    }
+    return res.json();
+  },
+
+  async convoyRun(alpha = 1.0, maxSteps = 100) {
+    const res = await fetch(`${API_BASE_URL}/api/simulation/convoy/run`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        alpha_danger: parseFloat(alpha),
+        max_steps: parseInt(maxSteps, 10),
+      }),
+    });
+    if (!res.ok) {
+      throw new Error(`Error ${res.status}: ${await res.text()}`);
+    }
+    return res.json();
+  },
+
+  async convoyReset(alpha = 1.0) {
+    const res = await fetch(`${API_BASE_URL}/api/simulation/convoy/reset`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ alpha_danger: parseFloat(alpha) }),
+    });
+    if (!res.ok) {
+      throw new Error(`Error ${res.status}: ${await res.text()}`);
+    }
+    return res.json();
+  },
+
+  async convoyStatus() {
+    const res = await fetch(`${API_BASE_URL}/api/simulation/convoy/status`);
+    if (!res.ok) {
+      throw new Error(`Error ${res.status}: ${await res.text()}`);
+    }
+    return res.json();
+  },
 };
 
 window.api = api;
