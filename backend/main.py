@@ -20,6 +20,7 @@ from fastapi.responses import FileResponse
 
 from app.api.controllers.scenario_controller import router as scenario_router
 from app.api.controllers.planning_controller import router as planning_router
+from app.api.controllers.logistics_controller import router as logistics_router
 from app.api.controllers.simulation_controller import router as simulation_router
 from app.services.scenario_service import ScenarioService
 
@@ -62,6 +63,7 @@ app.add_middleware(
 # Include API Routers
 app.include_router(scenario_router)
 app.include_router(planning_router)
+app.include_router(logistics_router)
 app.include_router(simulation_router)
 
 # Mount frontend

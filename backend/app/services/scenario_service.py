@@ -40,11 +40,13 @@ class ScenarioService:
         alpha_danger = cfg.get("alpha_danger", 1.0)
         d0_normalization = cfg.get("d0_normalization", 50.0)
         helicopter_cost = cfg.get("helicopter_cost", 150.0)
+        helicopter_speed = cfg.get("helicopter_speed", 15.0)
         max_time_limit = cfg.get("max_time_limit", 300.0)
 
         self.simulation_state = SimulationState(
             initial_budget=initial_budget,
             helicopter_cost=helicopter_cost,
+            helicopter_speed=helicopter_speed,
             beta_elevation=beta_elevation,
             alpha_danger=alpha_danger,
             d0_normalization=d0_normalization,
@@ -154,10 +156,12 @@ class ScenarioService:
             "config": {
                 "initial_budget": self.simulation_state.initial_budget,
                 "budget_available": self.simulation_state.budget_available,
+                "budget_reserved": round(self.simulation_state.budget_reserved, 2),
                 "beta_elevation": self.simulation_state.beta_elevation,
                 "alpha_danger": self.simulation_state.alpha_danger,
                 "d0_normalization": self.simulation_state.d0_normalization,
                 "helicopter_cost": self.simulation_state.helicopter_cost,
+                "helicopter_speed": self.simulation_state.helicopter_speed,
                 "max_time_limit": self.simulation_state.max_time_limit,
             },
             "elevated_network": {

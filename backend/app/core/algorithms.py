@@ -1,13 +1,14 @@
 """Graph algorithms implemented from scratch without external graph libraries."""
 
 import math
-from typing import Dict, List, Set, Tuple, Optional, Any
+from typing import Dict, List, Set, Tuple, Optional, Any, Union
 from app.core.dsu import DisjointSetUnion
 from app.core.priority_queue import PriorityQueue
 from app.core.elevated_graph import ElevatedGraph
 from app.core.maze_graph import MazeGraph
 from app.domain.edge import ElevatedEdge, MazeEdge
 from app.domain.node import ElevatedNode, ElevatedNodeType
+from app.domain.transport import TransportType, parse_transport_type
 
 
 def calculate_euclidean_distance(p1: Tuple[float, float], p2: Tuple[float, float]) -> float:
@@ -424,6 +425,87 @@ def dijkstra_reactive(
 
     path.reverse()
 
+    if not path or path[0] != start_node:
+        return None
+
+    return (dist[target_node], path)
+
+
+def dijkstra_elevated(
+    graph: ElevatedGraph,
+    start_node: str,
+    target_node: str,
+    mode: Union[TransportType, str] = TransportType.FOOT,
+) -> Optional[Tuple[float, List[str]]]:
+    """Computes the shortest passable path on ElevatedGraph (G_E) for ground transport.
+
+    Uses custom PriorityQueue (Min-Heap) without external graph libraries.
+    Skips impassable edges (e.g. destroyed bridges).
+    Weight is foot_time for FOOT mode or moto_time for MOTORCYCLE mode.
+    Deterministic lexicographical tie-breaking on equal distances.
+    """
+    start_node = str(start_node)
+    target_node = str(target_node)
+
+    if not graph.has_node(start_node) or not graph.has_node(target_node):
+        return None
+
+    t_mode = parse_transport_type(mode)
+    if t_mode == TransportType.HELICOPTER:
+        raise ValueError("dijkstra_elevated solo aplica para transporte terrestre (A pie o Moto).")
+
+    if start_node == target_node:
+        return (0.0, [start_node])
+
+    dist: Dict[str, float] = {node: float("inf") for node in graph.nodes}
+    parent: Dict[str, Optional[str]] = {node: None for node in graph.nodes}
+    dist[start_node] = 0.0
+
+    pq = PriorityQueue[Tuple[float, str, str]]()
+    pq.push((0.0, start_node, ""))
+
+    while not pq.is_empty():
+        d, u, _ = pq.pop()
+
+        if d > dist[u] + 1e-9:
+            continue
+
+        if u == target_node:
+            break
+
+        for v in sorted(graph.neighbors(u)):
+            edge = graph.get_elevated_edge(u, v)
+            if edge is None or not edge.is_passable():
+                continue
+
+            weight = edge.foot_time if t_mode == TransportType.FOOT else edge.moto_time
+            new_dist = d + weight
+
+            if new_dist < dist[v] - 1e-9:
+                dist[v] = new_dist
+                parent[v] = u
+                pq.push((new_dist, v, u))
+            elif abs(new_dist - dist[v]) <= 1e-9:
+                if parent[v] is None or u < parent[v]:
+                    parent[v] = u
+                    pq.push((new_dist, v, u))
+
+    if dist[target_node] == float("inf"):
+        return None
+
+    path: List[str] = []
+    curr: Optional[str] = target_node
+    visited: Set[str] = set()
+    while curr is not None:
+        path.append(curr)
+        if curr == start_node:
+            break
+        if curr in visited:
+            return None
+        visited.add(curr)
+        curr = parent.get(curr)
+
+    path.reverse()
     if not path or path[0] != start_node:
         return None
 

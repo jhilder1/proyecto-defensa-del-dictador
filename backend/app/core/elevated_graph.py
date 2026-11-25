@@ -112,6 +112,40 @@ class ElevatedGraph(BaseGraph):
     def get_bridges(self) -> List[ElevatedEdge]:
         return [edge for edge in self.elevated_edges.values() if edge.is_bridge]
 
+    def _sync_bridge_adj(self, edge: ElevatedEdge) -> None:
+        """Synchronizes bridge resistance and destroyed flags in adjacency dicts."""
+        if self.has_edge(edge.u, edge.v):
+            self.adj[edge.u][edge.v]["is_destroyed"] = edge.is_destroyed
+            self.adj[edge.u][edge.v]["current_resistance"] = edge.current_resistance
+            self.adj[edge.v][edge.u]["is_destroyed"] = edge.is_destroyed
+            self.adj[edge.v][edge.u]["current_resistance"] = edge.current_resistance
+
+    def record_motorcycle_bridge_crossing(self, u: str, v: str) -> bool:
+        """Records a completed motorcycle crossing on bridge (u, v).
+
+        Decrements resistance by 1, updates adjacency, and returns True if collapsed.
+        """
+        edge = self.get_elevated_edge(u, v)
+        if not edge or not edge.is_bridge:
+            return False
+        collapsed = edge.on_motorcycle_cross_complete()
+        self._sync_bridge_adj(edge)
+        return collapsed
+
+    def reset_bridges(self) -> None:
+        """Restores all bridges to maximum resistance and clears reconstruction timers."""
+        for edge in self.get_bridges():
+            edge.current_resistance = edge.max_resistance
+            edge.is_destroyed = False
+            edge.reconstruction_timer = 0.0
+            self._sync_bridge_adj(edge)
+
+    def reset_tower_occupancies(self) -> None:
+        """Clears stationed soldiers and reserved slots on all elevated nodes."""
+        for node in self.elevated_nodes.values():
+            node.stationed_soldiers.clear()
+            node.reserved_slots = 0
+
     def update_reconstruction_timers(self, delta_time: float) -> List[str]:
         """Advances bridge reconstruction timers.
         
@@ -120,12 +154,7 @@ class ElevatedGraph(BaseGraph):
         rebuilt = []
         for edge in self.get_bridges():
             if edge.is_destroyed and edge.update_reconstruction(delta_time):
-                # Update underlying graph edge representation
-                if self.has_edge(edge.u, edge.v):
-                    self.adj[edge.u][edge.v]["is_destroyed"] = False
-                    self.adj[edge.u][edge.v]["current_resistance"] = edge.current_resistance
-                    self.adj[edge.v][edge.u]["is_destroyed"] = False
-                    self.adj[edge.v][edge.u]["current_resistance"] = edge.current_resistance
+                self._sync_bridge_adj(edge)
                 rebuilt.append(f"{edge.u}-{edge.v}")
         return rebuilt
 

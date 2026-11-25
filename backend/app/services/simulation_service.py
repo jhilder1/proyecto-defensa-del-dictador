@@ -16,8 +16,12 @@ from typing import Dict, List, Tuple, Optional, Any
 from app.core.algorithms import dijkstra_reactive
 from app.core.maze_graph import MazeGraph
 from app.domain.enemy import EnemyMachine, EnemyType
+from app.domain.node import ElevatedNodeType
 from app.services.scenario_service import ScenarioService
 from app.services.hazard_service import HazardService, DefenseUnit
+from app.services.logistics_service import LogisticsService
+from app.services.combat_service import CombatService
+from app.services.convoy_service import interpolate_convoy_position
 
 
 class SimulationService:
@@ -29,10 +33,18 @@ class SimulationService:
         self,
         scenario_service: Optional[ScenarioService] = None,
         hazard_service: Optional[HazardService] = None,
+        logistics_service: Optional[LogisticsService] = None,
+        combat_service: Optional[CombatService] = None,
     ):
         self._scenario_service = scenario_service
         self.hazard_service = hazard_service or (
             HazardService(self._scenario_service) if self._scenario_service is not None else HazardService.get_instance()
+        )
+        self.logistics_service = logistics_service or (
+            LogisticsService(self._scenario_service) if self._scenario_service is not None else LogisticsService.get_instance()
+        )
+        self.combat_service = combat_service or (
+            CombatService(self._scenario_service) if self._scenario_service is not None else CombatService.get_instance()
         )
 
         self.current_node: str = "IN"
@@ -51,6 +63,14 @@ class SimulationService:
         self.destroyed: bool = False
         self.backtrack_count: int = 0
         self.step_history: List[Dict[str, Any]] = []
+
+        # Stage 5 continuous tick tracking
+        self.convoy_edge: Optional[Tuple[str, str]] = None
+        self.convoy_edge_progress: float = 0.0
+        self.convoy_x: float = 0.0
+        self.convoy_y: float = 0.0
+        self.last_decision: Optional[Dict[str, Any]] = None
+        self.last_combat_result: Dict[str, Any] = {}
 
         self._initialize_from_scenario()
 
@@ -97,6 +117,14 @@ class SimulationService:
         self.destroyed = False
         self.backtrack_count = 0
         self.step_history = []
+        self.convoy_edge = None
+        self.convoy_edge_progress = 0.0
+        self.last_decision = None
+        self.last_combat_result = {}
+
+        entry_node = maze_graph.get_maze_node(self.current_node)
+        self.convoy_x = entry_node.x if entry_node else 0.0
+        self.convoy_y = entry_node.y if entry_node else 0.0
 
         # If no enemies are defined, initialize default convoy
         if not self.scenario_service.simulation_state.enemies:
@@ -468,4 +496,256 @@ class SimulationService:
                 "total_damage_taken": round(self.total_damage_taken, 2),
                 "total_time_elapsed": round(self.total_time_elapsed, 2),
             },
+        }
+
+    # ------------------------------------------------------------------
+    # Stage 5: Discrete Logical Clock (tick) Engine
+    # ------------------------------------------------------------------
+
+    def _advance_convoy_continuous(self, dt: float) -> List[Dict[str, Any]]:
+        """Advances the convoy continuously along G_M for dt seconds without reversing mid-corridor."""
+        maze_graph = self.scenario_service.maze_graph
+        state = self.scenario_service.simulation_state
+        events: List[Dict[str, Any]] = []
+        remaining_dt = float(dt)
+
+        if not state.get_alive_enemies():
+            return events
+
+        # If currently idle at an intersection (and not at target), select next corridor
+        if self.convoy_edge is None and self.current_node != self.target_node:
+            self.hazard_service.evaluate_all_corridors(alpha=self.alpha_danger)
+            decision = self.evaluate_step_decision(alpha=self.alpha_danger)
+            self.last_decision = decision
+            chosen_next = decision.get("chosen_next_node")
+            if chosen_next is not None:
+                if decision.get("backtrack_prevented"):
+                    self.backtrack_count += 1
+                self.convoy_edge = (self.current_node, chosen_next)
+                self.convoy_edge_progress = 0.0
+                msg = f"Convoy en {self.current_node} eligió corredor hacia {chosen_next} ({decision.get('type')})."
+                state.add_event("CONVOY_DECISION", msg, {"from": self.current_node, "to": chosen_next, "type": decision.get("type")})
+                events.append({"type": "CONVOY_DECISION", "message": msg})
+
+        while remaining_dt > 1e-9 and self.convoy_edge is not None:
+            u, v = self.convoy_edge
+            corridor = maze_graph.get_corridor(u, v)
+            edge_duration = corridor.base_time if corridor else 1.0
+            time_left = max(0.0, edge_duration - self.convoy_edge_progress)
+
+            if remaining_dt >= time_left - 1e-9:
+                remaining_dt -= time_left
+                self.total_time_elapsed += time_left
+                self.convoy_edge = None
+                self.convoy_edge_progress = 0.0
+
+                self.step_index += 1
+                self.traversed_edges.append((u, v))
+                self.previous_node = u
+                self.current_node = v
+                self.visited_nodes.append(v)
+
+                node_v = maze_graph.get_maze_node(v)
+                if node_v:
+                    self.convoy_x = node_v.x
+                    self.convoy_y = node_v.y
+
+                if v == self.target_node:
+                    break
+
+                # Arrived at intermediate intersection: recalculate w(e) with active defenses
+                if remaining_dt > 1e-9:
+                    self.hazard_service.evaluate_all_corridors(alpha=self.alpha_danger)
+                    decision = self.evaluate_step_decision(alpha=self.alpha_danger)
+                    self.last_decision = decision
+                    chosen_next = decision.get("chosen_next_node")
+                    if chosen_next is None:
+                        break
+                    if decision.get("backtrack_prevented"):
+                        self.backtrack_count += 1
+                    self.convoy_edge = (self.current_node, chosen_next)
+                    self.convoy_edge_progress = 0.0
+                    msg = f"Convoy en {self.current_node} eligió corredor hacia {chosen_next} ({decision.get('type')})."
+                    state.add_event("CONVOY_DECISION", msg, {"from": self.current_node, "to": chosen_next, "type": decision.get("type")})
+                    events.append({"type": "CONVOY_DECISION", "message": msg})
+            else:
+                self.convoy_edge_progress += remaining_dt
+                self.total_time_elapsed += remaining_dt
+                remaining_dt = 0.0
+                self.convoy_x, self.convoy_y = interpolate_convoy_position(
+                    maze_graph, u, v, self.convoy_edge_progress, edge_duration
+                )
+
+        return events
+
+    def tick(self, dt: float = 1.0, alpha_danger: Optional[float] = None) -> Dict[str, Any]:
+        """Advances the entire simulation by one logical clock tick of dt seconds.
+
+        Strict event order:
+            1. Movements & position updates (convoy, ground transports, helicopters).
+            2. Stationed soldier attacks (Infantry/Sniper lowest HP, Gunner area).
+            3. Enemy destruction, bounty rewards, and reservation releases.
+            4. Victory / Defeat checks (elimination, exit reached, 300s resistance).
+            5. Bridge reconstruction timers.
+        """
+        dt = float(dt)
+        if dt <= 0.0:
+            raise ValueError("El intervalo dt del tick debe ser mayor a 0.")
+
+        state = self.scenario_service.simulation_state
+        if alpha_danger is not None:
+            self.alpha_danger = max(0.0, float(alpha_danger))
+            state.alpha_danger = self.alpha_danger
+
+        if state.is_game_over or self.is_finished:
+            return self.get_full_state(tick_events=[])
+
+        state.is_running = True
+        state.is_paused = False
+        tick_events: List[Dict[str, Any]] = []
+
+        # 1. Movements (convoy + ground & air missions)
+        convoy_events = self._advance_convoy_continuous(dt)
+        mission_events = self.logistics_service.advance_missions(dt)
+        tick_events.extend(convoy_events)
+        tick_events.extend(mission_events)
+
+        # 2 & 3. Combat attacks, enemy destruction & bounty rewards
+        combat_res = self.combat_service.execute_combat_tick(
+            dt=dt,
+            convoy_pos=(self.convoy_x, self.convoy_y),
+            scenario_service=self.scenario_service,
+        )
+        self.last_combat_result = combat_res
+        self.total_damage_taken += combat_res.get("total_damage_dealt", 0.0)
+
+        # 4. Advance logical clock & check termination conditions
+        state.clock = round(state.clock + dt, 6)
+        alive_enemies = state.get_alive_enemies()
+
+        if len(alive_enemies) == 0:
+            state.is_game_over = True
+            state.game_result = "Victoria por eliminación"
+            self.is_finished = True
+            self.destroyed = True
+            self.escaped = False
+        elif self.current_node == self.target_node and self.convoy_edge is None:
+            state.is_game_over = True
+            state.game_result = "Derrota"
+            self.is_finished = True
+            self.escaped = True
+            self.destroyed = False
+        elif state.clock >= state.max_time_limit - 1e-9:
+            state.is_game_over = True
+            state.game_result = "Victoria por resistencia"
+            self.is_finished = True
+            self.escaped = False
+            self.destroyed = False
+
+        if state.is_game_over:
+            state.is_running = False
+            state.is_paused = True
+            end_msg = f"Simulación finalizada en t={round(state.clock, 2)}s: {state.game_result}."
+            state.add_event("GAME_OVER", end_msg, {"result": state.game_result})
+            tick_events.append({"type": "GAME_OVER", "message": end_msg})
+
+        # 5. Update bridge reconstruction timers
+        rebuilt_bridges = self.scenario_service.elevated_graph.update_reconstruction_timers(dt)
+        for bridge_id in rebuilt_bridges:
+            reb_msg = f"Puente {bridge_id} reconstruido completamente y operativo."
+            state.add_event("BRIDGE_REBUILT", reb_msg, {"edge": bridge_id})
+            tick_events.append({"type": "BRIDGE_REBUILT", "message": reb_msg})
+
+        # Refresh corridor reactive weights for UI telemetry
+        self.hazard_service.evaluate_all_corridors(alpha=self.alpha_danger)
+
+        return self.get_full_state(
+            tick_combat=combat_res,
+            rebuilt_bridges=rebuilt_bridges,
+            tick_events=tick_events,
+        )
+
+    def reset_full(self, alpha_danger: Optional[float] = None) -> Dict[str, Any]:
+        """Performs a complete simulation reset (bridges, towers, budget, soldiers, missions, convoy)."""
+        state = self.scenario_service.simulation_state
+        ge = self.scenario_service.elevated_graph
+
+        ge.reset_bridges()
+        ge.reset_tower_occupancies()
+        state.budget_available = state.initial_budget
+        state.budget_reserved = 0.0
+        state.soldiers.clear()
+        state.active_missions.clear()
+        state.event_log.clear()
+
+        self.reset(alpha_danger=alpha_danger)
+        state.is_running = False
+        state.is_paused = True
+        state.is_game_over = False
+        state.game_result = "En preparación"
+
+        return self.get_full_state()
+
+    def get_full_state(
+        self,
+        tick_combat: Optional[Dict[str, Any]] = None,
+        rebuilt_bridges: Optional[List[str]] = None,
+        tick_events: Optional[List[Dict[str, Any]]] = None,
+    ) -> Dict[str, Any]:
+        """Returns comprehensive Stage 4 & 5 simulation state snapshot."""
+        state = self.scenario_service.simulation_state
+        ge = self.scenario_service.elevated_graph
+        gm = self.scenario_service.maze_graph
+
+        return {
+            "clock": round(state.clock, 2),
+            "max_time_limit": state.max_time_limit,
+            "is_running": state.is_running,
+            "is_paused": state.is_paused,
+            "is_game_over": state.is_game_over,
+            "game_result": state.game_result,
+            "budget": {
+                "initial": round(state.initial_budget, 2),
+                "available": round(state.budget_available, 2),
+                "reserved": round(state.budget_reserved, 2),
+                "total": round(state.total_budget, 2),
+            },
+            "convoy": {
+                "current_node": self.current_node,
+                "previous_node": self.previous_node,
+                "target_node": self.target_node,
+                "current_edge": list(self.convoy_edge) if self.convoy_edge else None,
+                "edge_progress": round(self.convoy_edge_progress, 2),
+                "x": round(self.convoy_x, 2),
+                "y": round(self.convoy_y, 2),
+                "hp": round(self.get_total_hp(), 2),
+                "max_hp": round(self.get_max_hp(), 2),
+                "alive_count": len(state.get_alive_enemies()),
+                "escaped": self.escaped,
+                "destroyed": self.destroyed,
+                "backtracks_prevented": self.backtrack_count,
+                "path_taken": list(self.visited_nodes),
+                "last_decision": self.last_decision,
+                "machines": [e.to_dict() for e in state.enemies],
+            },
+            "elevated_network": {
+                "nodes": [n.to_dict() for n in ge.elevated_nodes.values()],
+                "edges": [e.to_dict() for e in ge.elevated_edges.values()],
+                "bridges": [b.to_dict() for b in ge.get_bridges()],
+                "active_towers": [
+                    n.to_dict()
+                    for n in ge.elevated_nodes.values()
+                    if n.is_active_tower and n.node_type != ElevatedNodeType.BASE
+                ],
+            },
+            "maze_network": {
+                "nodes": [n.to_dict() for n in gm.maze_nodes.values()],
+                "corridors": [c.to_dict() for c in gm.maze_edges.values()],
+            },
+            "soldiers": [s.to_dict() for s in state.soldiers.values()],
+            "missions": [m.to_dict() for m in state.active_missions],
+            "last_combat": tick_combat if tick_combat is not None else self.last_combat_result,
+            "rebuilt_bridges": rebuilt_bridges or [],
+            "tick_events": tick_events or [],
+            "event_log": list(state.event_log[-50:]),
         }

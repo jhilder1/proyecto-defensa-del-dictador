@@ -9,6 +9,7 @@ from app.schemas.simulation_schema import (
     ConvoyStepRequest,
     ConvoyRunRequest,
     ConvoyResetRequest,
+    SimulationTickRequest,
 )
 
 router = APIRouter(prefix="/api/simulation", tags=["Simulation"])
@@ -106,5 +107,51 @@ def convoy_status() -> Dict[str, Any]:
             "path_taken": list(simulation_service.visited_nodes),
             "convoy_status": simulation_service.get_convoy_status(),
         }
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/step")
+def simulation_step(
+    payload: Optional[SimulationTickRequest] = Body(default=None),
+    dt: Optional[float] = Query(default=None),
+    alpha: Optional[float] = Query(default=None),
+) -> Dict[str, Any]:
+    """Advances the full simulation by 1 logical clock tick (Stage 5)."""
+    try:
+        dt_val = dt if dt is not None else (payload.dt if payload is not None else 1.0)
+        alpha_val = alpha
+        if alpha_val is None and payload is not None and payload.alpha_danger is not None:
+            alpha_val = payload.alpha_danger
+
+        simulation_service = SimulationService.get_instance()
+        return simulation_service.tick(dt=dt_val, alpha_danger=alpha_val)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/reset")
+def simulation_reset(
+    payload: Optional[ConvoyResetRequest] = Body(default=None),
+    alpha: Optional[float] = Query(default=None),
+) -> Dict[str, Any]:
+    """Resets the full simulation (clock, budget, bridges, towers, soldiers, missions, convoy)."""
+    try:
+        alpha_val = alpha
+        if alpha_val is None and payload is not None and payload.alpha_danger is not None:
+            alpha_val = payload.alpha_danger
+
+        simulation_service = SimulationService.get_instance()
+        return simulation_service.reset_full(alpha_danger=alpha_val)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.get("/state")
+def simulation_state() -> Dict[str, Any]:
+    """Returns the full current simulation state snapshot (Stage 5)."""
+    try:
+        simulation_service = SimulationService.get_instance()
+        return simulation_service.get_full_state()
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))

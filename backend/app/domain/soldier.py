@@ -37,17 +37,33 @@ SOLDIER_CONFIG = {
 }
 
 
+def parse_soldier_type(raw: Union[SoldierType, str]) -> SoldierType:
+    """Parses Spanish/English soldier type strings into SoldierType."""
+    if isinstance(raw, SoldierType):
+        return raw
+
+    text = str(raw).strip().lower()
+    if text in {"infantería", "infanteria", "infantry", "inf"}:
+        return SoldierType.INFANTRY
+    if text in {"francotirador", "sniper", "snip"}:
+        return SoldierType.SNIPER
+    if text in {"artillero", "gunner", "art", "gun"}:
+        return SoldierType.GUNNER
+    raise ValueError(f"Tipo de soldado desconocido: '{raw}'")
+
+
 class Soldier:
     """Represents a defensive soldier unit."""
 
     def __init__(
         self,
-        soldier_type: SoldierType,
+        soldier_type: Union[SoldierType, str],
         soldier_id: Optional[str] = None,
         location_node_id: Optional[str] = "Base",
+        status: str = "en_base",
     ):
         self.id = soldier_id or f"soldier_{uuid.uuid4().hex[:6]}"
-        self.soldier_type = SoldierType(soldier_type)
+        self.soldier_type = parse_soldier_type(soldier_type)
         cfg = SOLDIER_CONFIG[self.soldier_type]
         self.cost = cfg["cost"]
         self.damage = cfg["damage"]
@@ -55,6 +71,7 @@ class Soldier:
         self.fire_rate = cfg["fire_rate"]
         self.is_area = cfg["is_area"]
         self.location_node_id = location_node_id
+        self.status = status
         self.cooldown = 0.0  # seconds until next attack
 
     def get_effective_range(self, z_height: float, beta: float = 0.1) -> float:
@@ -84,6 +101,7 @@ class Soldier:
             "fire_rate": self.fire_rate,
             "is_area": self.is_area,
             "location_node_id": self.location_node_id,
+            "status": self.status,
             "cooldown": round(self.cooldown, 2),
         }
 

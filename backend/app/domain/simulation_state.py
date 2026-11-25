@@ -13,6 +13,7 @@ class SimulationState:
         self,
         initial_budget: float = 1200.0,
         helicopter_cost: float = 150.0,
+        helicopter_speed: float = 15.0,
         beta_elevation: float = 0.1,
         alpha_danger: float = 1.0,
         d0_normalization: float = 50.0,
@@ -23,6 +24,7 @@ class SimulationState:
         self.budget_reserved = 0.0
 
         self.helicopter_cost = float(helicopter_cost)
+        self.helicopter_speed = max(0.001, float(helicopter_speed))
         self.beta_elevation = float(beta_elevation)
         self.alpha_danger = float(alpha_danger)
         self.d0_normalization = float(d0_normalization)
@@ -86,6 +88,8 @@ class SimulationState:
     def to_dict(self) -> Dict[str, Any]:
         return {
             "clock": round(self.clock, 2),
+            "max_time_limit": self.max_time_limit,
+            "helicopter_speed": self.helicopter_speed,
             "is_running": self.is_running,
             "is_paused": self.is_paused,
             "is_game_over": self.is_game_over,
