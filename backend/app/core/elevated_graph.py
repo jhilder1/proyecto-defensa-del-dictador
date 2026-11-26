@@ -47,11 +47,12 @@ class ElevatedGraph(BaseGraph):
         self,
         u: str,
         v: str,
-        foot_time: float,
-        moto_time: float,
+        foot_time: Optional[float],
+        moto_time: Optional[float],
         is_bridge: bool = False,
         max_resistance: int = 3,
         reconstruction_duration: float = 30.0,
+        repair_personnel: int = 2,
     ) -> ElevatedEdge:
         """Adds an undirected elevated pathway or bridge."""
         edge = ElevatedEdge(
@@ -62,6 +63,7 @@ class ElevatedGraph(BaseGraph):
             is_bridge=is_bridge,
             max_resistance=max_resistance,
             reconstruction_duration=reconstruction_duration,
+            repair_personnel=repair_personnel,
         )
         key = edge.edge_key
         self.elevated_edges[key] = edge
@@ -138,6 +140,7 @@ class ElevatedGraph(BaseGraph):
             edge.current_resistance = edge.max_resistance
             edge.is_destroyed = False
             edge.reconstruction_timer = 0.0
+            edge.assigned_personnel = 0
             self._sync_bridge_adj(edge)
 
     def reset_tower_occupancies(self) -> None:
@@ -146,15 +149,49 @@ class ElevatedGraph(BaseGraph):
             node.stationed_soldiers.clear()
             node.reserved_slots = 0
 
-    def update_reconstruction_timers(self, delta_time: float) -> List[str]:
-        """Advances bridge reconstruction timers.
-        
+    def update_reconstruction_timers(
+        self,
+        delta_time: float,
+        simulation_state: Optional[Any] = None,
+    ) -> List[str]:
+        """Advances bridge reconstruction timers, optionally enforcing repair personnel limits.
+
         Returns a list of edge descriptions that finished rebuilding in this tick.
         """
         rebuilt = []
-        for edge in self.get_bridges():
-            if edge.is_destroyed and edge.update_reconstruction(delta_time):
-                self._sync_bridge_adj(edge)
-                rebuilt.append(f"{edge.u}-{edge.v}")
+        destroyed_bridges = sorted(
+            [e for e in self.get_bridges() if e.is_destroyed],
+            key=lambda e: e.edge_key,
+        )
+
+        if simulation_state is None:
+            for edge in destroyed_bridges:
+                if edge.update_reconstruction(delta_time):
+                    self._sync_bridge_adj(edge)
+                    rebuilt.append(f"{edge.u}-{edge.v}")
+            return rebuilt
+
+        # 1. Assign available repair personnel to waiting destroyed bridges
+        for edge in destroyed_bridges:
+            if edge.assigned_personnel == 0 and simulation_state.available_repair_personnel >= edge.repair_personnel:
+                edge.assigned_personnel = edge.repair_personnel
+                simulation_state.available_repair_personnel -= edge.repair_personnel
+                simulation_state.add_event(
+                    "BRIDGE_REPAIR_STARTED",
+                    f"Personal asignado ({edge.repair_personnel} operarios) para reconstruir puente {edge.u}-{edge.v}.",
+                    {"edge": f"{edge.u}-{edge.v}", "personnel": edge.repair_personnel},
+                )
+
+        # 2. Advance timers only for bridges with assigned personnel
+        for edge in destroyed_bridges:
+            if edge.assigned_personnel >= edge.repair_personnel:
+                if edge.update_reconstruction(delta_time):
+                    simulation_state.available_repair_personnel = min(
+                        simulation_state.total_repair_personnel,
+                        simulation_state.available_repair_personnel + edge.assigned_personnel,
+                    )
+                    edge.assigned_personnel = 0
+                    self._sync_bridge_adj(edge)
+                    rebuilt.append(f"{edge.u}-{edge.v}")
         return rebuilt
 

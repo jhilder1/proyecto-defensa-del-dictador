@@ -41,29 +41,29 @@ class TestPointDamageRate:
         assert damage == 20.0
 
     def test_single_count_artillery_rule_with_multiple_gunners(self):
-        """CRITICAL: Single-count artillery rule.
-        Regardless of how many gunners reach q, artillery contribution is counted AT MOST ONCE (20.0).
+        """Per PDF Section 6: each Artillero soldier counts once (20.0 per soldier)
+        in D(q), independent of how many machines are in the convoy.
         """
         g1 = DefenseUnit(SoldierType.GUNNER, x=0.0, y=0.0, effective_range=20.0, unit_id="g1")
         g2 = DefenseUnit(SoldierType.GUNNER, x=5.0, y=0.0, effective_range=20.0, unit_id="g2")
         g3 = DefenseUnit(SoldierType.GUNNER, x=0.0, y=5.0, effective_range=20.0, unit_id="g3")
         g4 = DefenseUnit(SoldierType.GUNNER, x=2.0, y=2.0, effective_range=20.0, unit_id="g4")
 
-        # 2 gunners covering q=(1.0, 1.0)
+        # 2 gunners covering q=(1.0, 1.0) -> 2 * 20.0 = 40.0
         dmg_2 = calculate_point_damage((1.0, 1.0), [g1, g2])
-        assert dmg_2 == 20.0, "2 gunners must yield exactly 20.0, not 40.0"
+        assert dmg_2 == 40.0
 
-        # 3 gunners covering q=(1.0, 1.0)
+        # 3 gunners covering q=(1.0, 1.0) -> 3 * 20.0 = 60.0
         dmg_3 = calculate_point_damage((1.0, 1.0), [g1, g2, g3])
-        assert dmg_3 == 20.0, "3 gunners must yield exactly 20.0, not 60.0"
+        assert dmg_3 == 60.0
 
-        # 4 gunners covering q=(1.0, 1.0)
+        # 4 gunners covering q=(1.0, 1.0) -> 4 * 20.0 = 80.0
         dmg_4 = calculate_point_damage((1.0, 1.0), [g1, g2, g3, g4])
-        assert dmg_4 == 20.0, "4 gunners must yield exactly 20.0, not 80.0"
+        assert dmg_4 == 80.0
 
     def test_mixed_defenses_coverage(self):
-        """1 Infantry (10.0), 2 Snipers (2 * 25.0 = 50.0), and 3 Gunners (20.0 once).
-        Total D(q) = 10.0 + 50.0 + 20.0 = 80.0.
+        """1 Infantry (10.0), 2 Snipers (2 * 25.0 = 50.0), and 3 Gunners (3 * 20.0 = 60.0).
+        Total D(q) = 10.0 + 50.0 + 60.0 = 120.0.
         """
         inf = DefenseUnit(SoldierType.INFANTRY, x=0.0, y=0.0, effective_range=20.0, unit_id="inf")
         snip1 = DefenseUnit(SoldierType.SNIPER, x=0.0, y=0.0, effective_range=20.0, unit_id="s1")
@@ -73,7 +73,7 @@ class TestPointDamageRate:
         gun3 = DefenseUnit(SoldierType.GUNNER, x=0.0, y=0.0, effective_range=20.0, unit_id="g3")
 
         dmg = calculate_point_damage((1.0, 1.0), [inf, snip1, snip2, gun1, gun2, gun3])
-        assert dmg == 80.0
+        assert dmg == 120.0
 
     def test_unreachable_point_damage_is_zero(self):
         """Point outside range of all units has D(q) = 0.0."""

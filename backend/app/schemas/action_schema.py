@@ -19,3 +19,4 @@ class DispatchGroundRequest(BaseModel):
 class DispatchAirRequest(BaseModel):
     soldier_ids: List[str] = Field(..., min_length=1, max_length=4)
     destination_id: str
+    origin_id: Optional[str] = None

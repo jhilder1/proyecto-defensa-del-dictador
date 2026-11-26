@@ -35,7 +35,13 @@ class PlanningService:
         return self.scenario_service.mst_result
 
     def select_towers(self, k_towers: int = 3, d0_normalization: Optional[float] = None) -> Dict[str, Any]:
-        """Runs greedy tower selection algorithm."""
+        """Runs greedy tower selection algorithm (blocked once combat simulation starts)."""
+        state = self.scenario_service.simulation_state
+        if state.clock > 0.0 or state.is_running:
+            raise ValueError(
+                "Las torres no pueden construirse ni reubicarse una vez iniciado el enfrentamiento."
+            )
+
         # Ensure MST is calculated first
         if not self.scenario_service.mst_result:
             self.calculate_mst()

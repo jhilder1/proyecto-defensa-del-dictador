@@ -1,34 +1,61 @@
 /**
- * Main application orchestrator for the visual interface.
- * Coordinates Scenario Management, MST (Kruskal), Tower Selection (Stage 2),
- * and Reactive Convoy Simulation with Anti-Backtracking (Stage 3).
+ * Main application orchestrator for the 2D Defense Simulation frontend (Stages 1-6).
  */
 
 document.addEventListener("DOMContentLoaded", async () => {
   const canvas = document.getElementById("simCanvas");
   const renderer = new Renderer2D(canvas);
 
-  // UI Elements - Stage 1 & 2
+  // Header & Toolbar Elements
   const scenarioNameEl = document.getElementById("scenarioName");
+  const statSimClockEl = document.getElementById("statSimClock");
+  const badgeGameOutcomeEl = document.getElementById("badgeGameOutcome");
   const statGeNodesEl = document.getElementById("statGeNodes");
   const statGmCorridorsEl = document.getElementById("statGmCorridors");
   const statActiveTowersEl = document.getElementById("statActiveTowers");
   const statCoverageEl = document.getElementById("statCoverage");
   const statBudgetEl = document.getElementById("statBudget");
+  const statBudgetReservedEl = document.getElementById("statBudgetReserved");
 
+  // Stage 1 & 2 Controls
   const btnLoadDefault = document.getElementById("btnLoadDefault");
+  const btnLoadComplex = document.getElementById("btnLoadComplex");
   const fileInput = document.getElementById("fileInput");
   const btnUpload = document.getElementById("btnUpload");
-
   const btnCalcMst = document.getElementById("btnCalcMst");
   const btnSelectTowers = document.getElementById("btnSelectTowers");
   const inputKTowers = document.getElementById("inputKTowers");
   const inputD0 = document.getElementById("inputD0");
 
-  const logViewer = document.getElementById("logViewer");
-  const btnClearLog = document.getElementById("btnClearLog");
+  // Stage 4 Logistics Controls
+  const btnBuyInfantry = document.getElementById("btnBuyInfantry");
+  const btnBuySniper = document.getElementById("btnBuySniper");
+  const btnBuyGunner = document.getElementById("btnBuyGunner");
+  const soldierRosterListEl = document.getElementById("soldierRosterList");
+  const rosterSummaryTextEl = document.getElementById("rosterSummaryText");
+  const statHeliUsesEl = document.getElementById("statHeliUses");
+  const statRepairPersonnelEl = document.getElementById("statRepairPersonnel");
+  const selectOriginNode = document.getElementById("selectOriginNode");
+  const selectTransportType = document.getElementById("selectTransportType");
+  const selectDestTower = document.getElementById("selectDestTower");
+  const btnDispatchUnits = document.getElementById("btnDispatchUnits");
+  const bridgeStatusListEl = document.getElementById("bridgeStatusList");
+  const convoyMachinesListEl = document.getElementById("convoyMachinesList");
 
-  // UI Elements - Stage 3 Simulation & Reactive Convoy
+  // Stage 5 & 6 Tick Controls
+  const btnSimStep = document.getElementById("btnSimStep");
+  const btnSimPlay = document.getElementById("btnSimPlay");
+  const btnSimReset = document.getElementById("btnSimReset");
+  const labelSpeedActiveEl = document.getElementById("labelSpeedActive");
+  const speedButtons = document.querySelectorAll(".speed-btn");
+  const chkShowSurveillanceRanges = document.getElementById("chkShowSurveillanceRanges");
+  const chkShowAttackRanges = document.getElementById("chkShowAttackRanges");
+  const btnResetView = document.getElementById("btnResetView");
+  const chkShowEdgeLabels = document.getElementById("chkShowEdgeLabels");
+  const btnToggleLegend = document.getElementById("btnToggleLegend");
+  const legendBox = document.getElementById("legendBox");
+
+  // Stage 3 Reactive Convoy Elements
   const statConvoyPosEl = document.getElementById("statConvoyPos");
   const statConvoyHpEl = document.getElementById("statConvoyHp");
   const statConvoyDamageEl = document.getElementById("statConvoyDamage");
@@ -40,41 +67,29 @@ document.addEventListener("DOMContentLoaded", async () => {
   const btnCalcHazards = document.getElementById("btnCalcHazards");
   const btnConvoyStep = document.getElementById("btnConvoyStep");
   const btnConvoyPlay = document.getElementById("btnConvoyPlay");
-  const playIcon = document.getElementById("playIcon");
   const btnConvoyRunAll = document.getElementById("btnConvoyRunAll");
   const btnConvoyReset = document.getElementById("btnConvoyReset");
   const chkShowHeatmap = document.getElementById("chkShowHeatmap");
   const chkShowEvalPoints = document.getElementById("chkShowEvalPoints");
 
+  // Log Viewer
+  const logViewerEl = document.getElementById("logViewer");
+  const btnClearLog = document.getElementById("btnClearLog");
+  const logViewer = new window.LogViewer(logViewerEl, btnClearLog);
+
   // Application State
   let currentScenario = null;
   let currentMst = null;
   let currentTowerSelection = null;
-  let currentHazards = null;
   let currentConvoyState = null;
-  let playInterval = null;
-  let isPlaying = false;
+  let currentFullState = null;
+  const selectedSoldierIds = new Set();
 
-  function appendLog(tag, message, type = "info") {
-    const time = new Date().toLocaleTimeString();
-    const entry = document.createElement("div");
-    entry.className = "log-entry";
+  let legacyPlayInterval = null;
+  let isLegacyPlaying = false;
 
-    let tagClass = "log-tag-info";
-    if (tag === "MST") tagClass = "log-tag-mst";
-    else if (tag === "TORRE") tagClass = "log-tag-tower";
-    else if (tag === "CONVOY") tagClass = "log-tag-convoy";
-    else if (tag === "PELIGRO") tagClass = "log-tag-hazard";
-    else if (tag === "ANTI-RETROCESO") tagClass = "log-tag-antibacktrack";
-    else if (tag === "ALERTA" || tag === "RETROCESO") tagClass = "log-tag-warn";
-
-    entry.innerHTML = `
-      <span class="log-time">[${time}]</span>
-      <span class="${tagClass}">[${tag}]</span>
-      <span class="log-msg">${message}</span>
-    `;
-    logViewer.appendChild(entry);
-    logViewer.scrollTop = logViewer.scrollHeight;
+  function appendLog(tag, message) {
+    logViewer.append(tag, message);
   }
 
   function updateStats() {
@@ -83,59 +98,54 @@ document.addEventListener("DOMContentLoaded", async () => {
     scenarioNameEl.textContent = currentScenario.scenario_name || "Escenario cargado";
     statGeNodesEl.textContent = currentScenario.elevated_network?.nodes?.length || 0;
     statGmCorridorsEl.textContent = currentScenario.maze_network?.corridors?.length || 0;
-    statBudgetEl.textContent = `$${currentScenario.config?.initial_budget || 0}`;
+
+    if (!currentFullState) {
+      statBudgetEl.textContent = `$${currentScenario.config?.budget_available ?? currentScenario.config?.initial_budget ?? 0}`;
+      statBudgetReservedEl.textContent = `$${currentScenario.config?.budget_reserved ?? 0}`;
+    }
 
     const towersCount = currentTowerSelection?.towers_selected_count || 0;
     statActiveTowersEl.textContent = towersCount;
 
-    const coverage = currentTowerSelection?.coverage_percentage !== undefined
-      ? `${currentTowerSelection.coverage_percentage}%`
-      : "0%";
+    const coverage =
+      currentTowerSelection?.coverage_percentage !== undefined
+        ? `${currentTowerSelection.coverage_percentage}%`
+        : "0%";
     statCoverageEl.textContent = coverage;
   }
 
   function updateConvoyStats(state) {
     if (!state) return;
 
-    // Node position
     if (statConvoyPosEl) {
       statConvoyPosEl.textContent = state.current_node || "IN";
     }
 
-    // Health calculation
-    const hp = state.hp !== undefined ? state.hp : (state.convoy_status?.total_hp || 0);
-    const maxHp = state.max_hp !== undefined ? state.max_hp : (state.convoy_status?.max_total_hp || 350);
+    const hp = state.hp !== undefined ? state.hp : state.convoy_status?.total_hp || 0;
+    const maxHp = state.max_hp !== undefined ? state.max_hp : state.convoy_status?.max_total_hp || 350;
     const ratio = maxHp > 0 ? hp / maxHp : 0;
     const pct = Math.round(ratio * 100);
 
     if (statConvoyHpEl) {
       statConvoyHpEl.textContent = `${pct}% (${Math.round(hp)}/${Math.round(maxHp)})`;
-      if (ratio > 0.5) {
-        statConvoyHpEl.style.color = "var(--accent-green)";
-      } else if (ratio > 0.25) {
-        statConvoyHpEl.style.color = "var(--accent-yellow)";
-      } else {
-        statConvoyHpEl.style.color = "var(--accent-red)";
-      }
+      statConvoyHpEl.style.color =
+        ratio > 0.5 ? "var(--accent-green)" : ratio > 0.25 ? "var(--accent-yellow)" : "var(--accent-red)";
     }
 
-    // Damage taken
-    const damage = state.history?.total_damage_taken !== undefined
-      ? state.history.total_damage_taken
-      : (state.total_damage_taken || 0);
+    const damage =
+      state.history?.total_damage_taken !== undefined
+        ? state.history.total_damage_taken
+        : Math.max(0, maxHp - hp);
     if (statConvoyDamageEl) {
       statConvoyDamageEl.textContent = `${Math.round(damage)} HP`;
     }
 
-    // Backtracks count
-    const backtracks = state.backtracks_prevented !== undefined
-      ? state.backtracks_prevented
-      : (state.backtrack_count || 0);
+    const backtracks =
+      state.backtracks_prevented !== undefined ? state.backtracks_prevented : state.backtrack_count || 0;
     if (statAntiBacktracksEl) {
       statAntiBacktracksEl.textContent = backtracks;
     }
 
-    // Status badge
     if (badgeConvoyStatusEl) {
       if (state.is_finished) {
         if (state.escaped) {
@@ -146,9 +156,9 @@ document.addEventListener("DOMContentLoaded", async () => {
           badgeConvoyStatusEl.textContent = "Destruido";
         } else {
           badgeConvoyStatusEl.className = "badge badge-warning";
-          badgeConvoyStatusEl.textContent = "Sin Ruta";
+          badgeConvoyStatusEl.textContent = "Finalizado";
         }
-      } else if (state.step_index > 0) {
+      } else if (state.step_index > 0 || state.current_edge) {
         badgeConvoyStatusEl.className = "badge badge-purple";
         badgeConvoyStatusEl.textContent = "En Marcha";
       } else {
@@ -158,14 +168,126 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   }
 
-  function stopAutoPlay() {
-    if (playInterval) {
-      clearInterval(playInterval);
-      playInterval = null;
+  function syncFullSimulationState(fullState) {
+    if (!fullState) return;
+    currentFullState = fullState;
+
+    // 1. Clock & Outcome HUD
+    if (statSimClockEl) {
+      const limit = fullState.max_time_limit ?? 300;
+      statSimClockEl.textContent = `⏱ ${Number(fullState.clock || 0).toFixed(1)}s / ${limit}s`;
     }
-    isPlaying = false;
+
+    if (badgeGameOutcomeEl) {
+      badgeGameOutcomeEl.textContent = fullState.game_result || "En preparación";
+      badgeGameOutcomeEl.className = "outcome-banner";
+      if (fullState.is_game_over) {
+        if (fullState.game_result === "Derrota") {
+          badgeGameOutcomeEl.classList.add("outcome-defeat");
+        } else {
+          badgeGameOutcomeEl.classList.add("outcome-victory");
+        }
+      } else if (fullState.is_running) {
+        badgeGameOutcomeEl.classList.add("outcome-running");
+      }
+    }
+
+    // 2. Budget Split, Helicopter Uses, Repair Personnel
+    if (fullState.budget) {
+      statBudgetEl.textContent = `$${fullState.budget.available}`;
+      statBudgetReservedEl.textContent = `$${fullState.budget.reserved}`;
+    }
+    if (statHeliUsesEl && fullState.helicopter) {
+      statHeliUsesEl.textContent = `${fullState.helicopter.remaining_uses}/${fullState.helicopter.max_uses} (flota ${fullState.helicopter.available_fleet}/${fullState.helicopter.fleet_size})`;
+    }
+    if (statRepairPersonnelEl && fullState.personnel) {
+      statRepairPersonnelEl.textContent = `${fullState.personnel.available}/${fullState.personnel.total}`;
+    }
+
+    // 3. Logistics Origin, Roster, Destination Towers, Bridges, Convoy Machines
+    window.SimulationControls.renderOriginSelector(
+      fullState.elevated_network?.nodes || [],
+      selectOriginNode
+    );
+    window.SimulationControls.renderSoldierRoster(
+      fullState.soldiers || [],
+      soldierRosterListEl,
+      selectedSoldierIds,
+      rosterSummaryTextEl,
+      selectOriginNode ? selectOriginNode.value : ""
+    );
+    window.SimulationControls.renderDestinationTowers(
+      fullState.elevated_network?.nodes || [],
+      selectDestTower
+    );
+    window.SimulationControls.renderBridgesPanel(
+      fullState.elevated_network?.bridges || [],
+      bridgeStatusListEl
+    );
+    window.SimulationControls.renderConvoyMachines(
+      fullState.convoy?.machines || [],
+      convoyMachinesListEl
+    );
+
+    if (statActiveTowersEl && fullState.elevated_network?.active_towers) {
+      statActiveTowersEl.textContent = fullState.elevated_network.active_towers.length;
+    }
+
+    // 4. Canvas Renderer & Convoy Stats
+    renderer.setFullSimulationState(fullState);
+    if (fullState.convoy) {
+      updateConvoyStats({
+        current_node: fullState.convoy.current_node,
+        current_edge: fullState.convoy.current_edge,
+        hp: fullState.convoy.hp,
+        max_hp: fullState.convoy.max_hp,
+        backtracks_prevented: fullState.convoy.backtracks_prevented,
+        is_finished: fullState.is_game_over,
+        escaped: fullState.convoy.escaped,
+        destroyed: fullState.convoy.destroyed,
+        step_index: (fullState.convoy.path_taken?.length || 1) - 1,
+      });
+    }
+
+    // 5. Sync Audit Log Events
+    logViewer.syncBackendEvents(fullState.event_log);
+  }
+
+  function updateSimPlayButton(playing) {
+    if (!btnSimPlay) return;
+    btnSimPlay.innerHTML = playing ? "<span>⏸</span> Pausar" : "<span>▶</span> Play";
+  }
+
+  async function executeSimulationTick() {
+    try {
+      const alpha = parseFloat(inputAlphaDanger.value);
+      const state = await window.api.simulationStep(1.0, alpha);
+      syncFullSimulationState(state);
+
+      if (state.is_game_over) {
+        tickControls.pause();
+        updateSimPlayButton(false);
+        return false;
+      }
+      return true;
+    } catch (err) {
+      tickControls.pause();
+      updateSimPlayButton(false);
+      appendLog("ERROR", `Error en tick de simulación: ${err.message}`);
+      return false;
+    }
+  }
+
+  const tickControls = new window.SimulationControls(executeSimulationTick);
+
+  function stopAutoPlay() {
+    if (legacyPlayInterval) {
+      clearInterval(legacyPlayInterval);
+      legacyPlayInterval = null;
+    }
+    isLegacyPlaying = false;
     if (btnConvoyPlay) {
-      btnConvoyPlay.innerHTML = '<span id="playIcon">▶</span> Iniciar';
+      btnConvoyPlay.innerHTML = '<span id="playIcon">▶</span> Marcha';
     }
   }
 
@@ -173,49 +295,41 @@ document.addEventListener("DOMContentLoaded", async () => {
     const alpha = parseFloat(inputAlphaDanger.value);
     const res = await window.api.convoyStep(alpha);
     currentConvoyState = res;
-    if (res.corridor_hazards) {
-      currentHazards = res;
-    }
-
     renderer.setConvoyState(res);
     updateConvoyStats(res);
 
-    // Decision logging
     const dec = res.decision || {};
     if (dec.type === "ANTI_BACKTRACK_AVOIDED") {
       appendLog(
         "ANTI-RETROCESO",
-        `⛔ Regla activada en nodo '${res.previous_node}': se descartó regreso a '${dec.discarded_node}'. Desvío alternativo tomado hacia '${res.current_node}' (Ruta hacia salida: ${dec.projected_path?.join(" ➔ ")}).`
+        `⛔ Regla activada en nodo '${res.previous_node}': se descartó regreso a '${dec.discarded_node}'. Desvío tomado hacia '${res.current_node}' (${dec.projected_path?.join(" ➔ ")}).`
       );
     } else if (dec.type === "FORCED_DEAD_END_BACKTRACK") {
       appendLog(
         "ALERTA",
-        `🛑 Callejón sin salida en '${res.previous_node}'. Retroceso forzado como último recurso hacia '${res.current_node}'.`
+        `🛑 Callejón sin salida en '${res.previous_node}'. Retroceso forzado hacia '${res.current_node}'.`
       );
     } else if (dec.type === "OPTIMAL") {
       appendLog(
         "CONVOY",
-        `Paso #${res.step_index}: Convoy avanzó de '${res.previous_node}' a '${res.current_node}'. Ruta proyectada: ${dec.projected_path?.join(" ➔ ")} (Costo w: ${res.dijkstra?.raw_cost}s).`
+        `Paso #${res.step_index}: Convoy avanzó de '${res.previous_node}' a '${res.current_node}'. Ruta proyectada: ${dec.projected_path?.join(" ➔ ")} (w: ${res.dijkstra?.raw_cost}s).`
       );
-    } else if (dec.type === "REACHED_EXIT") {
-      appendLog("CONVOY", `Convoy ha arribado a la salida '${res.target_node}'.`);
     }
-
-    appendLog(
-      "CONVOY",
-      `Telemetría Convoy: HP=${res.hp}/${res.max_hp}, Daño acumulado=${res.history?.total_damage_taken || 0} HP, Tiempo transcurrido=${res.history?.total_time_elapsed || 0}s.`
-    );
 
     if (res.is_finished) {
       stopAutoPlay();
       if (res.escaped) {
-        appendLog("CONVOY", `🎉 ¡MISIÓN ENEMIGA EXITOSA! El convoy blindado escapó por el nodo '${res.target_node}'.`);
+        appendLog("DERROTA", `💀 El convoy escapó por '${res.target_node}'.`);
       } else if (res.destroyed) {
-        appendLog("CONVOY", `💥 ¡VICTORIA DEFENSIVA TOTAL! El convoy fue completamente destruido.`);
+        appendLog("VICTORIA", `💥 ¡Convoy completamente destruido!`);
       }
     }
-
     return res;
+  }
+
+  async function syncStateFromBackend() {
+    const fullState = await window.api.getSimulationState();
+    syncFullSimulationState(fullState);
   }
 
   async function refreshScenario() {
@@ -228,19 +342,10 @@ document.addEventListener("DOMContentLoaded", async () => {
       updateStats();
       appendLog("ESCENARIO", `Escenario '${currentScenario.scenario_name}' sincronizado.`);
 
-      // Sync initial Stage 3 simulation state
-      try {
-        const alpha = parseFloat(inputAlphaDanger.value) || 1.0;
-        const resetRes = await window.api.convoyReset(alpha);
-        currentConvoyState = resetRes;
-        if (resetRes.corridor_hazards) {
-          currentHazards = resetRes;
-        }
-        renderer.setConvoyState(resetRes);
-        updateConvoyStats(resetRes);
-      } catch (e) {
-        console.warn("Could not auto-reset convoy on scenario refresh:", e);
-      }
+      const alpha = parseFloat(inputAlphaDanger.value) || 1.0;
+      const resetState = await window.api.simulationReset(alpha);
+      logViewer.resetSync();
+      syncFullSimulationState(resetState);
     } catch (err) {
       appendLog("ERROR", `Error cargando escenario: ${err.message}`);
     }
@@ -250,27 +355,32 @@ document.addEventListener("DOMContentLoaded", async () => {
   // Event Listeners - Stage 1 & 2
   // ==========================================
 
-  btnLoadDefault.addEventListener("click", async () => {
+  async function loadPresetScenario(filename, label) {
     try {
       stopAutoPlay();
-      appendLog("CARGA", "Cargando escenario básico pedagógico...");
-      currentScenario = await window.api.loadDefaultScenario("scenario_1_basic.json");
+      tickControls.pause();
+      updateSimPlayButton(false);
+      appendLog("ESCENARIO", `Cargando ${label}...`);
+      currentScenario = await window.api.loadDefaultScenario(filename);
       currentMst = null;
       currentTowerSelection = null;
       renderer.setData(currentScenario, null, null);
       updateStats();
-      appendLog("CARGA", "Escenario básico cargado correctamente.");
 
-      // Reset convoy state for new scenario
       const alpha = parseFloat(inputAlphaDanger.value) || 1.0;
-      const resetRes = await window.api.convoyReset(alpha);
-      currentConvoyState = resetRes;
-      renderer.setConvoyState(resetRes);
-      updateConvoyStats(resetRes);
+      const resetState = await window.api.simulationReset(alpha);
+      logViewer.resetSync();
+      syncFullSimulationState(resetState);
+      appendLog("ESCENARIO", `${label} cargado correctamente.`);
     } catch (err) {
-      appendLog("ERROR", `Error al cargar escenario por defecto: ${err.message}`);
+      appendLog("ERROR", `Error al cargar ${label}: ${err.message}`);
     }
-  });
+  }
+
+  btnLoadDefault.addEventListener("click", () => loadPresetScenario("scenario_1_basic.json", "Escenario Básico (1)"));
+  if (btnLoadComplex) {
+    btnLoadComplex.addEventListener("click", () => loadPresetScenario("scenario_2_complex.json", "Escenario Complejo (2)"));
+  }
 
   btnUpload.addEventListener("click", () => fileInput.click());
 
@@ -279,19 +389,20 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (!file) return;
     try {
       stopAutoPlay();
-      appendLog("CARGA", `Subiendo archivo: ${file.name}...`);
+      tickControls.pause();
+      updateSimPlayButton(false);
+      appendLog("ESCENARIO", `Subiendo archivo: ${file.name}...`);
       currentScenario = await window.api.uploadScenarioFile(file);
       currentMst = null;
       currentTowerSelection = null;
       renderer.setData(currentScenario, null, null);
       updateStats();
-      appendLog("CARGA", `Escenario '${currentScenario.scenario_name}' cargado con éxito.`);
 
       const alpha = parseFloat(inputAlphaDanger.value) || 1.0;
-      const resetRes = await window.api.convoyReset(alpha);
-      currentConvoyState = resetRes;
-      renderer.setConvoyState(resetRes);
-      updateConvoyStats(resetRes);
+      const resetState = await window.api.simulationReset(alpha);
+      logViewer.resetSync();
+      syncFullSimulationState(resetState);
+      appendLog("ESCENARIO", `Escenario '${currentScenario.scenario_name}' cargado con éxito.`);
     } catch (err) {
       appendLog("ERROR", `Error subiendo escenario: ${err.message}`);
     }
@@ -302,7 +413,6 @@ document.addEventListener("DOMContentLoaded", async () => {
       appendLog("MST", "Calculando Árbol Generador Mínimo (Kruskal) sobre la componente de la Base...");
       const res = await window.api.calculateMST();
       currentMst = res;
-
       renderer.setData(currentScenario, currentMst, currentTowerSelection);
 
       appendLog("MST", `MST completado: ${res.mst_edges.length} aristas seleccionadas. Costo total: ${res.total_cost}s a pie.`);
@@ -336,40 +446,179 @@ document.addEventListener("DOMContentLoaded", async () => {
       updateStats();
 
       appendLog("TORRE", `Selección finalizada: ${res.towers_selected_count} torres activadas. Cobertura: ${res.coverage_percentage}%.`);
-
       for (const step of res.history) {
         appendLog(
           "TORRE",
-          `Iteración #${step.iteration}: Seleccionada Torre '${step.selected_tower_id}' con puntuación S(p)=${step.score}. Cubre ${step.new_corridors_covered} nuevo(s) corredor(es). Restan ${step.unwatched_remaining} por vigilar.`
+          `Iteración #${step.iteration}: Torre '${step.selected_tower_id}' (S(p)=${step.score}, cubrió ${step.new_corridors_covered} tramo(s)).`
         );
       }
 
-      // Automatically re-evaluate hazards with the newly deployed towers
-      const alpha = parseFloat(inputAlphaDanger.value) || 1.0;
-      const hazards = await window.api.calculateHazards(alpha);
-      currentHazards = hazards;
-      renderer.setSimulationData(hazards, currentConvoyState);
-      appendLog("PELIGRO", `Peligros en corredores actualizados tras despliegue de torres.`);
+      await syncStateFromBackend();
     } catch (err) {
       appendLog("ERROR", `Error en selección voraz: ${err.message}`);
     }
   });
 
-  btnClearLog.addEventListener("click", () => {
-    logViewer.innerHTML = "";
+  // ==========================================
+  // Event Listeners - Stage 4 Logistics
+  // ==========================================
+
+  async function handleBuySoldier(soldierType) {
+    try {
+      const res = await window.api.buySoldier(soldierType, 1);
+      for (const s of res.purchased || []) {
+        selectedSoldierIds.add(s.id);
+      }
+      await syncStateFromBackend();
+    } catch (err) {
+      appendLog("ERROR", `Compra rechazada: ${err.message}`);
+    }
+  }
+
+  btnBuyInfantry.addEventListener("click", () => handleBuySoldier("Infantería"));
+  btnBuySniper.addEventListener("click", () => handleBuySoldier("Francotirador"));
+  btnBuyGunner.addEventListener("click", () => handleBuySoldier("Artillero"));
+
+  if (selectOriginNode) {
+    selectOriginNode.addEventListener("change", () => {
+      selectedSoldierIds.clear();
+      if (currentFullState) {
+        window.SimulationControls.renderSoldierRoster(
+          currentFullState.soldiers || [],
+          soldierRosterListEl,
+          selectedSoldierIds,
+          rosterSummaryTextEl,
+          selectOriginNode.value
+        );
+      }
+    });
+  }
+
+  btnDispatchUnits.addEventListener("click", async () => {
+    try {
+      const originId = selectOriginNode ? selectOriginNode.value : "";
+      const transportType = selectTransportType.value;
+      const destinationId = selectDestTower.value;
+      if (!destinationId) {
+        appendLog("ALERTA", "Selecciona o activa primero una torre destino.");
+        return;
+      }
+
+      let idsToSend = Array.from(selectedSoldierIds);
+      if (idsToSend.length === 0) {
+        const pool = originId
+          ? (currentFullState?.soldiers || []).filter((s) => s.status === "apostado" && s.location_node_id === originId)
+          : (currentFullState?.soldiers || []).filter((s) => s.status === "en_base");
+        const maxCap = transportType === "A pie" ? 1 : transportType === "Moto" ? 2 : 4;
+        idsToSend = pool.slice(0, maxCap).map((s) => s.id);
+      }
+
+      if (idsToSend.length === 0) {
+        appendLog("ALERTA", "No hay soldados disponibles en el origen seleccionado para despachar.");
+        return;
+      }
+
+      if (transportType === "Helicóptero") {
+        await window.api.dispatchAir(idsToSend, destinationId, originId || null);
+      } else {
+        await window.api.dispatchGround(transportType, idsToSend, destinationId, originId || null);
+      }
+
+      idsToSend.forEach((id) => selectedSoldierIds.delete(id));
+      await syncStateFromBackend();
+    } catch (err) {
+      appendLog("ERROR", `Despacho rechazado: ${err.message}`);
+    }
   });
 
   // ==========================================
-  // Event Listeners - Stage 3 Simulation & Controls
+  // Event Listeners - Stage 5 & 6 Tick Controls
   // ==========================================
 
-  // Risk slider real-time value display
+  btnSimStep.addEventListener("click", async () => {
+    tickControls.pause();
+    updateSimPlayButton(false);
+    await executeSimulationTick();
+  });
+
+  btnSimPlay.addEventListener("click", () => {
+    if (currentFullState?.is_game_over) {
+      appendLog("ALERTA", "La simulación ya terminó. Pulsa 'Reiniciar Simulación Completa' para volver a jugar.");
+      return;
+    }
+    const playing = tickControls.toggle();
+    updateSimPlayButton(playing);
+    appendLog("INFO", playing ? `Simulación iniciada a velocidad ${tickControls.speedMultiplier}x.` : "Simulación pausada.");
+  });
+
+  btnSimReset.addEventListener("click", async () => {
+    try {
+      stopAutoPlay();
+      tickControls.pause();
+      updateSimPlayButton(false);
+      selectedSoldierIds.clear();
+
+      const alpha = parseFloat(inputAlphaDanger.value);
+      const resetState = await window.api.simulationReset(alpha);
+      logViewer.resetSync();
+      syncFullSimulationState(resetState);
+      appendLog("INFO", "Simulación reiniciada por completo (reloj, presupuesto, puentes, tropas y convoy).");
+    } catch (err) {
+      appendLog("ERROR", `Error al reiniciar simulación: ${err.message}`);
+    }
+  });
+
+  speedButtons.forEach((btn) => {
+    btn.addEventListener("click", () => {
+      speedButtons.forEach((b) => b.classList.remove("active"));
+      btn.classList.add("active");
+      const speed = parseFloat(btn.dataset.speed);
+      tickControls.setSpeed(speed);
+      if (labelSpeedActiveEl) {
+        labelSpeedActiveEl.textContent = `${speed}x`;
+      }
+    });
+  });
+
+  if (chkShowSurveillanceRanges) {
+    chkShowSurveillanceRanges.addEventListener("change", (e) => {
+      renderer.showSurveillanceRanges = e.target.checked;
+      renderer.render();
+    });
+  }
+
+  if (chkShowAttackRanges) {
+    chkShowAttackRanges.addEventListener("change", (e) => {
+      renderer.showAttackRanges = e.target.checked;
+      renderer.render();
+    });
+  }
+
+  if (btnResetView) {
+    btnResetView.addEventListener("click", () => renderer.resetView());
+  }
+
+  if (chkShowEdgeLabels) {
+    chkShowEdgeLabels.addEventListener("change", (e) => {
+      renderer.showEdgeLabels = e.target.checked;
+      renderer.render();
+    });
+  }
+
+  if (btnToggleLegend && legendBox) {
+    btnToggleLegend.addEventListener("click", () => {
+      legendBox.classList.toggle("collapsed");
+    });
+  }
+
+  // ==========================================
+  // Event Listeners - Stage 3 Reactive Controls
+  // ==========================================
+
   inputAlphaDanger.addEventListener("input", (e) => {
-    const val = parseFloat(e.target.value).toFixed(1);
-    labelAlphaValue.textContent = val;
+    labelAlphaValue.textContent = parseFloat(e.target.value).toFixed(1);
   });
 
-  // Display toggles
   if (chkShowHeatmap) {
     chkShowHeatmap.addEventListener("change", (e) => {
       renderer.showHeatmap = e.target.checked;
@@ -384,42 +633,28 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
   }
 
-  // Calculate Hazards Button
   btnCalcHazards.addEventListener("click", async () => {
     try {
       const alpha = parseFloat(inputAlphaDanger.value);
-      appendLog("PELIGRO", `Calculando peligros en corredores G_M con factor de riesgo α=${alpha}...`);
+      appendLog("PELIGRO", `Calculando peligros en corredores G_M con α=${alpha}...`);
       const hazards = await window.api.calculateHazards(alpha);
-      currentHazards = hazards;
-
-      renderer.setSimulationData(hazards, currentConvoyState);
+      renderer.setSimulationData(hazards, renderer.convoyState);
 
       appendLog(
         "PELIGRO",
-        `Cálculo exitoso: Peligro promedio máx D̄=${hazards.max_avg_danger}. Defensas activas: ${hazards.active_defenses_count}.`
+        `Cálculo exitoso: D̄ máx=${hazards.max_avg_danger}. Defensas activas=${hazards.active_defenses_count}.`
       );
-
-      // Report active hazards on covered corridors
-      let coveredCount = 0;
-      for (const [key, c] of Object.entries(hazards.corridor_hazards || {})) {
+      for (const c of Object.values(hazards.corridor_hazards || {})) {
         if (c.avg_danger > 0) {
-          coveredCount++;
           const artBadge = c.has_artillery ? " [💥 ARTILLERÍA]" : "";
-          appendLog(
-            "PELIGRO",
-            `Corredor ${c.u} ↔ ${c.v}: D̄=${c.avg_danger}, Daño pot P(e)=${c.danger_potential}, Peso reactivo w(e)=${c.reactive_weight}s${artBadge}`
-          );
+          appendLog("PELIGRO", `${c.u} ↔ ${c.v}: D̄=${c.avg_danger}, P(e)=${c.danger_potential}, w(e)=${c.reactive_weight}s${artBadge}`);
         }
-      }
-      if (coveredCount === 0) {
-        appendLog("PELIGRO", `Ningún corredor cubierto actualmente por defensas desplegadas.`);
       }
     } catch (err) {
       appendLog("ERROR", `Error al calcular peligros: ${err.message}`);
     }
   });
 
-  // Convoy Step Button
   btnConvoyStep.addEventListener("click", async () => {
     try {
       await executeStep();
@@ -428,27 +663,17 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   });
 
-  // Convoy Play/Pause Button
   btnConvoyPlay.addEventListener("click", () => {
-    if (isPlaying) {
+    if (isLegacyPlaying) {
       stopAutoPlay();
-      appendLog("CONVOY", "Simulación pausada.");
+      appendLog("CONVOY", "Marcha reactiva pausada.");
     } else {
-      if (currentConvoyState && currentConvoyState.is_finished) {
-        appendLog("CONVOY", "El convoy ya finalizó su recorrido. Pulsa 'Reiniciar Convoy' para simular de nuevo.");
-        return;
-      }
-
-      isPlaying = true;
+      isLegacyPlaying = true;
       btnConvoyPlay.innerHTML = '<span id="playIcon">⏸</span> Pausar';
-      appendLog("CONVOY", "Iniciando marcha reactiva automática paso a paso (800ms)...");
-
-      playInterval = setInterval(async () => {
+      legacyPlayInterval = setInterval(async () => {
         try {
           const res = await executeStep();
-          if (res.is_finished) {
-            stopAutoPlay();
-          }
+          if (res.is_finished) stopAutoPlay();
         } catch (err) {
           stopAutoPlay();
           appendLog("ERROR", `Error en marcha automática: ${err.message}`);
@@ -457,72 +682,47 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   });
 
-  // Convoy Run All Button
   btnConvoyRunAll.addEventListener("click", async () => {
     stopAutoPlay();
     try {
       const alpha = parseFloat(inputAlphaDanger.value);
-      appendLog("CONVOY", `Ejecutando recorrido completo del convoy con α=${alpha}...`);
       const res = await window.api.convoyRun(alpha, 100);
-
       appendLog(
         "CONVOY",
-        `Simulación completa finalizada en ${res.total_steps} paso(s). Resultado: ${res.escaped ? "ESCAPÓ" : (res.destroyed ? "DESTRUIDO" : "FINALIZADO")}. Decisiones anti-retroceso: ${res.backtracks_prevented}. Daño total: ${res.total_damage_taken} HP.`
+        `Recorrido finalizado en ${res.total_steps} paso(s). Anti-retroceso: ${res.backtracks_prevented}. Daño: ${res.total_damage_taken} HP.`
       );
-
       if (res.steps && res.steps.length > 0) {
-        // Animate sequence smoothly for visual feedback
-        let stepIdx = 0;
+        let idx = 0;
         const animTimer = setInterval(() => {
-          if (stepIdx < res.steps.length) {
-            const stepData = res.steps[stepIdx];
+          if (idx < res.steps.length) {
+            const stepData = res.steps[idx];
             currentConvoyState = stepData;
             renderer.setConvoyState(stepData);
             updateConvoyStats(stepData);
-
-            const dec = stepData.decision || {};
-            if (dec.type === "ANTI_BACKTRACK_AVOIDED") {
-              appendLog(
-                "ANTI-RETROCESO",
-                `[Paso ${stepData.step_index}] ⛔ Regla activada: Descartado '${dec.discarded_node}', desvío tomado hacia '${stepData.current_node}'.`
-              );
-            }
-            stepIdx++;
+            idx++;
           } else {
             clearInterval(animTimer);
-            appendLog("CONVOY", `Visualización de recorrido total concluida.`);
           }
         }, 350);
       }
     } catch (err) {
-      appendLog("ERROR", `Error en ejecución total del convoy: ${err.message}`);
+      appendLog("ERROR", `Error en ejecución total: ${err.message}`);
     }
   });
 
-  // Convoy Reset Button
   btnConvoyReset.addEventListener("click", async () => {
     stopAutoPlay();
     try {
       const alpha = parseFloat(inputAlphaDanger.value);
-      appendLog("CONVOY", "Reiniciando convoy a posición de ENTRADA (IN)...");
       const res = await window.api.convoyReset(alpha);
       currentConvoyState = res;
-      if (res.corridor_hazards) {
-        currentHazards = res;
-      }
-
       renderer.setConvoyState(res);
       updateConvoyStats(res);
-
-      appendLog(
-        "CONVOY",
-        `Convoy reiniciado a '${res.current_node}'. HP restaurado: ${res.hp}/${res.max_hp} (100%). Ruta proyectada hacia salida: ${res.projected_path?.join(" ➔ ")} (Costo w: ${res.projected_cost}s).`
-      );
+      appendLog("CONVOY", `Ruta del convoy reiniciada a '${res.current_node}'.`);
     } catch (err) {
-      appendLog("ERROR", `Error al reiniciar convoy: ${err.message}`);
+      appendLog("ERROR", `Error al reiniciar ruta: ${err.message}`);
     }
   });
 
-  // Initial load
   await refreshScenario();
 });

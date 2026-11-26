@@ -128,13 +128,14 @@ class LogisticsService:
                 raise ValueError(f"Soldado '{s_id}' no existe.")
             if soldier.status == "en_transito":
                 raise ValueError(f"Soldado '{s_id}' ya se encuentra en tránsito.")
-            if soldier.status == "apostado":
-                raise ValueError(f"Soldado '{s_id}' ya está apostado en una torre.")
             soldiers.append(soldier)
 
         base_node = ge.get_base_node()
         default_origin = base_node.id if base_node else "Base"
         resolved_origin = str(origin_id) if origin_id else (soldiers[0].location_node_id or default_origin)
+
+        if resolved_origin == dest.id:
+            raise ValueError(f"El origen y el destino no pueden ser el mismo nodo ('{dest.id}').")
 
         for soldier in soldiers:
             if soldier.location_node_id != resolved_origin:
@@ -153,6 +154,11 @@ class LogisticsService:
             )
 
         total_time, path = route_res
+
+        # Release origin tower slots if relocating stationed soldiers
+        for soldier in soldiers:
+            if soldier.id in origin_node.stationed_soldiers:
+                origin_node.stationed_soldiers.remove(soldier.id)
 
         # Reserve slots and commit transit status
         dest.reserved_slots += len(soldiers)
@@ -183,6 +189,7 @@ class LogisticsService:
         self,
         soldier_ids: List[str],
         destination_id: str,
+        origin_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Dispatches up to 4 soldiers by helicopter with automatic surplus redistribution."""
         if not soldier_ids:
@@ -196,6 +203,11 @@ class LogisticsService:
 
         state = self.scenario_service.simulation_state
         ge = self.scenario_service.elevated_graph
+
+        if state.remaining_helicopter_uses <= 0:
+            raise ValueError("No quedan usos disponibles de helicóptero en este escenario.")
+        if state.active_air_missions_count >= state.helicopter_fleet_size:
+            raise ValueError("No hay helicóptero disponible en este momento (flota en vuelo).")
 
         heliport = ge.get_heliport_node()
         if not heliport:
@@ -211,15 +223,21 @@ class LogisticsService:
         if not primary_dest.is_active_tower or primary_dest.node_type == ElevatedNodeType.BASE:
             raise ValueError(f"El nodo '{destination_id}' no es una torre defensiva habilitada.")
 
-        valid_origins = {base_node.id, heliport.id}
+        pickup_node = ge.get_elevated_node(origin_id) if origin_id else heliport
+        if not pickup_node:
+            raise ValueError(f"Nodo de recogida '{origin_id}' no encontrado en la Red Elevada.")
+        if pickup_node.id == primary_dest.id:
+            raise ValueError(f"El origen y el destino del vuelo no pueden ser el mismo nodo ('{primary_dest.id}').")
+
+        valid_origins = {pickup_node.id} if origin_id else {base_node.id, heliport.id}
         soldiers: List[Soldier] = []
         for s_id in soldier_ids:
             soldier = state.soldiers.get(s_id)
             if not soldier:
                 raise ValueError(f"Soldado '{s_id}' no existe.")
-            if soldier.status != "en_base" or soldier.location_node_id not in valid_origins:
+            if soldier.status == "en_transito" or soldier.location_node_id not in valid_origins:
                 raise ValueError(
-                    f"Soldado '{s_id}' no está disponible en Base/Helipuerto (estado='{soldier.status}')."
+                    f"Soldado '{s_id}' no está disponible en recogida (estado='{soldier.status}', ubicación='{soldier.location_node_id}')."
                 )
             soldiers.append(soldier)
 
@@ -236,8 +254,8 @@ class LogisticsService:
         reservations_to_apply: List[Tuple[ElevatedNode, int]] = []
         visited_towers: Set[str] = set()
 
-        # Leg 1: Heliport -> primary destination
-        dist_1 = calculate_euclidean_distance((heliport.x, heliport.y), (primary_dest.x, primary_dest.y))
+        # Leg 1: Pickup -> primary destination
+        dist_1 = calculate_euclidean_distance((pickup_node.x, pickup_node.y), (primary_dest.x, primary_dest.y))
         dur_1 = dist_1 / speed
         can_take_1 = min(primary_dest.available_slots, len(remaining))
         dropoffs_1 = remaining[:can_take_1]
@@ -248,9 +266,9 @@ class LogisticsService:
 
         legs.append(
             AirLeg(
-                from_node_id=heliport.id,
+                from_node_id=pickup_node.id,
                 to_node_id=primary_dest.id,
-                from_pos=(heliport.x, heliport.y),
+                from_pos=(pickup_node.x, pickup_node.y),
                 to_pos=(primary_dest.x, primary_dest.y),
                 distance=dist_1,
                 duration=dur_1,
@@ -318,36 +336,40 @@ class LogisticsService:
                 )
                 remaining = []
 
-        # Commit reservations atomically
+        # Commit reservations atomically (single helicopter use consumed for entire circuit)
+        state.remaining_helicopter_uses -= 1
         state.reserve_budget(flight_cost)
         for node, count in reservations_to_apply:
             node.reserved_slots += count
         for soldier in soldiers:
+            if soldier.id in pickup_node.stationed_soldiers:
+                pickup_node.stationed_soldiers.remove(soldier.id)
             soldier.status = "en_transito"
             soldier.location_node_id = None
 
-        circuit_path = [heliport.id] + [leg.to_node_id for leg in legs]
+        circuit_path = [pickup_node.id] + [leg.to_node_id for leg in legs]
         mission = TransportMission(
             transport_type=TransportType.HELICOPTER,
             soldier_ids=soldier_ids,
-            origin_id=heliport.id,
+            origin_id=pickup_node.id,
             destination_id=primary_dest.id,
             path=circuit_path,
             legs=legs,
             reserved_cost=flight_cost,
-            current_x=heliport.x,
-            current_y=heliport.y,
+            current_x=pickup_node.x,
+            current_y=pickup_node.y,
         )
         state.active_missions.append(mission)
 
         state.add_event(
             "AIR_DISPATCH",
-            f"Vuelo aéreo despachado desde {heliport.id} hacia {primary_dest.id} con {len(soldiers)} soldado(s) (circuito: {' -> '.join(circuit_path)}).",
+            f"Vuelo aéreo despachado desde {pickup_node.id} hacia {primary_dest.id} con {len(soldiers)} soldado(s) (circuito: {' -> '.join(circuit_path)}, usos restantes: {state.remaining_helicopter_uses}/{state.max_helicopter_uses}).",
             {
                 "mission_id": mission.id,
                 "circuit": circuit_path,
                 "flight_cost": flight_cost,
                 "total_duration": round(mission.total_flight_duration, 2),
+                "remaining_uses": state.remaining_helicopter_uses,
             },
         )
 
@@ -570,7 +592,7 @@ class LogisticsService:
                 break
 
     def get_logistics_state(self) -> Dict[str, Any]:
-        """Returns current budget, soldier roster, active/completed missions, bridges, and tower occupancies."""
+        """Returns current budget, helicopter uses, repair personnel, soldiers, missions, bridges, and towers."""
         state = self.scenario_service.simulation_state
         ge = self.scenario_service.elevated_graph
 
@@ -580,6 +602,19 @@ class LogisticsService:
                 "available": round(state.budget_available, 2),
                 "reserved": round(state.budget_reserved, 2),
                 "total": round(state.total_budget, 2),
+            },
+            "helicopter": {
+                "remaining_uses": state.remaining_helicopter_uses,
+                "max_uses": state.max_helicopter_uses,
+                "available_fleet": state.helicopters_available,
+                "fleet_size": state.helicopter_fleet_size,
+                "cost": state.helicopter_cost,
+                "speed": state.helicopter_speed,
+            },
+            "personnel": {
+                "total": state.total_repair_personnel,
+                "available": state.available_repair_personnel,
+                "busy": state.total_repair_personnel - state.available_repair_personnel,
             },
             "soldiers": [s.to_dict() for s in state.soldiers.values()],
             "missions": [m.to_dict() for m in state.active_missions],

@@ -59,11 +59,11 @@ def kruskal_mst(
     all_edges = elevated_graph.elevated_edges.values()
 
     for edge in all_edges:
-        if edge.u in base_component and edge.v in base_component:
+        if edge.u in base_component and edge.v in base_component and edge.allows_foot():
             # Deterministic edge representation: min_id, max_id
             u_min = min(edge.u, edge.v)
             v_max = max(edge.u, edge.v)
-            candidate_edges.append((edge.foot_time, u_min, v_max, edge))
+            candidate_edges.append((float(edge.foot_time), u_min, v_max, edge))
 
     # Sort edges: weight ASC, then u_min ASC, then v_max ASC (lexicographical tie-breaking)
     candidate_edges.sort(key=lambda item: (item[0], item[1], item[2]))
@@ -475,10 +475,10 @@ def dijkstra_elevated(
 
         for v in sorted(graph.neighbors(u)):
             edge = graph.get_elevated_edge(u, v)
-            if edge is None or not edge.is_passable():
+            if edge is None or not edge.is_passable(t_mode):
                 continue
 
-            weight = edge.foot_time if t_mode == TransportType.FOOT else edge.moto_time
+            weight = float(edge.foot_time) if t_mode == TransportType.FOOT else float(edge.moto_time)
             new_dist = d + weight
 
             if new_dist < dist[v] - 1e-9:
@@ -512,8 +512,10 @@ def dijkstra_elevated(
     return (dist[target_node], path)
 
 
-# Re-export hazard calculation functions for algorithm-level consumers
-from app.services.hazard_service import calculate_point_damage, calculate_corridor_hazard
-
-
+def __getattr__(name: str) -> Any:
+    """Lazily re-export hazard helpers to avoid core <-> services circular imports."""
+    if name in {"calculate_point_damage", "calculate_corridor_hazard"}:
+        from app.services import hazard_service
+        return getattr(hazard_service, name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 

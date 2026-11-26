@@ -5,40 +5,50 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Simulación de Defensa Estratégica - General P. Tardo</title>
   <link rel="stylesheet" href="/static/css/style.css">
+  <link rel="stylesheet" href="/static/css/visualizer.css">
 </head>
 <body>
   <header>
     <h1>
       🛡️ Simulación de Defensa Estratégica
-      <span class="badge" style="color: var(--accent-purple); border-color: rgba(188, 140, 255, 0.4); background: rgba(188, 140, 255, 0.15);">Etapa 3: Peligro & Navegación Reactiva</span>
+      <span class="badge" style="color: var(--accent-cyan); border-color: rgba(88, 166, 255, 0.4); background: rgba(88, 166, 255, 0.15);">Etapa 6: Simulador Completo 2D</span>
     </h1>
-    <div id="scenarioName" style="color: var(--text-muted); font-size: 0.9rem;">Cargando...</div>
+    <div class="header-hud">
+      <div id="scenarioName" style="color: var(--text-muted); font-size: 0.85rem;">Cargando...</div>
+      <div id="statSimClock" class="clock-display">⏱ 0.0s / 300s</div>
+      <div id="badgeGameOutcome" class="outcome-banner">En preparación</div>
+    </div>
   </header>
 
   <div class="layout-container">
     <!-- Sidebar Controls -->
     <aside class="sidebar">
-      <!-- Escenarios -->
+      <!-- 1. Escenarios -->
       <div class="panel-card">
         <div class="panel-title">📂 Gestión de Escenarios</div>
-        <button id="btnLoadDefault" class="btn btn-secondary">
-          <span>🔄</span> Cargar Escenario Básico
-        </button>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px;">
+          <button id="btnLoadDefault" class="btn btn-secondary" style="margin: 0; font-size: 0.78rem;">
+            <span>🔄</span> Básico (1)
+          </button>
+          <button id="btnLoadComplex" class="btn btn-secondary" style="margin: 0; font-size: 0.78rem;">
+            <span>🗺️</span> Complejo (2)
+          </button>
+        </div>
         <button id="btnUpload" class="btn btn-secondary">
           <span>📤</span> Subir Archivo JSON
         </button>
         <input type="file" id="fileInput" accept=".json" style="display: none;">
       </div>
 
-      <!-- Planificación Defensiva -->
+      <!-- 2. Planificación Defensiva -->
       <div class="panel-card">
-        <div class="panel-title">📐 Algoritmos de Planificación</div>
+        <div class="panel-title">📐 Planificación Defensiva (G_E)</div>
 
         <button id="btnCalcMst" class="btn btn-accent">
           <span>🌲</span> Calcular MST en G_E (Kruskal)
         </button>
 
-        <div style="margin-top: 15px; border-top: 1px solid var(--border-color); padding-top: 12px;">
+        <div style="margin-top: 12px; border-top: 1px solid var(--border-color); padding-top: 10px;">
           <div class="form-group">
             <label for="inputKTowers">Número de Torres (K):</label>
             <input type="number" id="inputKTowers" class="form-control" value="3" min="1" max="10">
@@ -54,14 +64,122 @@
         </div>
       </div>
 
-      <!-- Simulación Convoy Reactivo (Etapa 3) -->
+      <!-- 3. Logística y Despliegue (Etapa 4) -->
+      <div class="panel-card" id="panelLogistics">
+        <div class="panel-title">
+          <span>🚁 Logística & Despliegue</span>
+          <span style="font-size: 0.7rem; color: var(--text-muted);">Máx 3/torre</span>
+        </div>
+
+        <div class="budget-grid">
+          <div class="budget-cell">
+            <span class="budget-label">Disponible</span>
+            <span id="statBudget" class="budget-amount" style="color: var(--accent-green);">$0</span>
+          </div>
+          <div class="budget-cell">
+            <span class="budget-label">Reservado</span>
+            <span id="statBudgetReserved" class="budget-amount" style="color: var(--accent-yellow);">$0</span>
+          </div>
+        </div>
+
+        <div class="roster-summary" style="margin-bottom: 8px;">
+          <span>🚁 Usos Helicóptero: <b id="statHeliUses" style="color: var(--accent-purple);">0/0</b></span>
+          <span>👷 Operarios: <b id="statRepairPersonnel" style="color: var(--accent-cyan);">0/0</b></span>
+        </div>
+
+        <div class="buy-grid">
+          <button id="btnBuyInfantry" class="btn-buy" title="Dmg: 10 | R: 5 | f: 1.0/s">
+            <span>🟢 Infantería</span>
+            <span class="price">$100</span>
+          </button>
+          <button id="btnBuySniper" class="btn-buy" title="Dmg: 50 | R: 20 | f: 0.5/s">
+            <span>🔷 Francotirador</span>
+            <span class="price">$300</span>
+          </button>
+          <button id="btnBuyGunner" class="btn-buy" title="Dmg: 100 Área | R: 15 | f: 0.2/s">
+            <span>🟥 Artillero</span>
+            <span class="price">$500</span>
+          </button>
+        </div>
+
+        <div class="roster-summary">
+          <span>Tropas en Base:</span>
+          <span id="rosterSummaryText">Base: 0 | Tránsito: 0 | Torres: 0</span>
+        </div>
+        <div id="soldierRosterList" class="soldier-roster"></div>
+
+        <div class="dispatch-row">
+          <div>
+            <label for="selectOriginNode" style="font-size: 0.72rem; color: var(--text-muted);">Origen Tropas</label>
+            <select id="selectOriginNode" class="form-control">
+              <option value="">Base / Helipuerto</option>
+            </select>
+          </div>
+          <div>
+            <label for="selectTransportType" style="font-size: 0.72rem; color: var(--text-muted);">Transporte</label>
+            <select id="selectTransportType" class="form-control">
+              <option value="A pie">🚶 A pie (1)</option>
+              <option value="Moto">🏍 Moto (1-2)</option>
+              <option value="Helicóptero">🚁 Helicóptero (1-4)</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group" style="margin-bottom: 6px;">
+          <label for="selectDestTower" style="font-size: 0.72rem; color: var(--text-muted);">Torre Destino</label>
+          <select id="selectDestTower" class="form-control"></select>
+        </div>
+
+        <button id="btnDispatchUnits" class="btn btn-primary">
+          <span>🚀</span> Despachar Unidades
+        </button>
+      </div>
+
+      <!-- 4. Motor de Simulación Completa por Ticks (Etapa 5/6) -->
+      <div class="panel-card" id="panelTickEngine">
+        <div class="panel-title">
+          <span>⏱ Motor Temporal (Ticks)</span>
+          <span id="labelSpeedActive" class="badge">1x</span>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px;">
+          <button id="btnSimStep" class="btn btn-accent" style="margin: 0;">
+            <span>⏭</span> Tick +1s
+          </button>
+          <button id="btnSimPlay" class="btn btn-primary" style="margin: 0;">
+            <span>▶</span> Play
+          </button>
+        </div>
+
+        <div class="speed-selector">
+          <button class="speed-btn" data-speed="0.5">0.5x</button>
+          <button class="speed-btn active" data-speed="1">1x</button>
+          <button class="speed-btn" data-speed="2">2x</button>
+          <button class="speed-btn" data-speed="5">5x</button>
+        </div>
+
+        <button id="btnSimReset" class="btn btn-secondary" style="margin-top: 8px;">
+          <span>🔄</span> Reiniciar Simulación Completa
+        </button>
+
+        <div style="margin-top: 10px; border-top: 1px solid var(--border-color); padding-top: 8px;">
+          <label style="display: flex; align-items: center; gap: 8px; font-size: 0.76rem; color: var(--text-muted); cursor: pointer; margin-bottom: 5px;">
+            <input type="checkbox" id="chkShowSurveillanceRanges" checked>
+            <span>Mostrar radios vigilancia (R_V)</span>
+          </label>
+          <label style="display: flex; align-items: center; gap: 8px; font-size: 0.76rem; color: var(--text-muted); cursor: pointer;">
+            <input type="checkbox" id="chkShowAttackRanges" checked>
+            <span>Mostrar radios de ataque (R_ef)</span>
+          </label>
+        </div>
+      </div>
+
+      <!-- 5. Simulación Convoy Reactivo / Peligro (Etapa 3) -->
       <div class="panel-card" id="panelStage3">
         <div class="panel-title">
-          <span>🚗 Simulación Convoy</span>
+          <span>🚗 Navegación Reactiva (G_M)</span>
           <span id="badgeConvoyStatus" class="badge badge-purple">En Espera</span>
         </div>
 
-        <!-- Factor de Ponderación de Riesgo Alpha -->
         <div class="form-group">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
             <label for="inputAlphaDanger" style="margin: 0;">Ponderación Riesgo (α):</label>
@@ -70,56 +188,51 @@
           <input type="range" id="inputAlphaDanger" min="0.0" max="5.0" step="0.1" value="1.0" class="form-control" style="cursor: pointer; padding: 2px;">
         </div>
 
-        <!-- Botón Calcular Peligros -->
         <button id="btnCalcHazards" class="btn btn-gold" style="margin-bottom: 8px;">
           <span>⚠️</span> Calcular Peligros w(e)
         </button>
 
-        <!-- Botones de Control de Reproducción -->
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px;">
           <button id="btnConvoyStep" class="btn btn-accent" style="margin: 0;">
-            <span>⏭</span> Paso Siguiente
+            <span>⏭</span> Paso Nodo
           </button>
           <button id="btnConvoyPlay" class="btn btn-primary" style="margin: 0;">
-            <span id="playIcon">▶</span> Iniciar
+            <span id="playIcon">▶</span> Marcha
           </button>
         </div>
 
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 6px;">
           <button id="btnConvoyRunAll" class="btn btn-secondary" style="margin: 0;">
-            <span>⚡</span> Recorrido Total
+            <span>⚡</span> Recorrido
           </button>
           <button id="btnConvoyReset" class="btn btn-secondary" style="margin: 0;">
-            <span>🔄</span> Reiniciar Convoy
+            <span>🔄</span> Reset Ruta
           </button>
         </div>
 
-        <!-- Toggles de Visualización -->
-        <div style="margin-top: 12px; border-top: 1px solid var(--border-color); padding-top: 8px;">
-          <label style="display: flex; align-items: center; gap: 8px; font-size: 0.78rem; color: var(--text-muted); cursor: pointer; margin-bottom: 6px;">
+        <div style="margin-top: 10px; border-top: 1px solid var(--border-color); padding-top: 8px;">
+          <label style="display: flex; align-items: center; gap: 8px; font-size: 0.76rem; color: var(--text-muted); cursor: pointer; margin-bottom: 5px;">
             <input type="checkbox" id="chkShowHeatmap" checked>
             <span>Mostrar mapa de calor w(e)</span>
           </label>
-          <label style="display: flex; align-items: center; gap: 8px; font-size: 0.78rem; color: var(--text-muted); cursor: pointer;">
+          <label style="display: flex; align-items: center; gap: 8px; font-size: 0.76rem; color: var(--text-muted); cursor: pointer;">
             <input type="checkbox" id="chkShowEvalPoints" checked>
             <span>Mostrar puntos (q_ini, q_mid, q_end)</span>
           </label>
         </div>
       </div>
 
-      <!-- Parámetros de Simulación -->
+      <!-- 6. Estado Táctico en Tiempo Real -->
       <div class="panel-card">
-        <div class="panel-title">⚙️ Parámetros & Fondos</div>
-        <div style="font-size: 0.8rem; line-height: 1.6; color: var(--text-muted);">
-          <div>Presupuesto: <b id="statBudget" style="color: var(--accent-green);">$0</b></div>
-          <div>Límite por torre: <b style="color: var(--text-main);">Máx 3 soldados</b></div>
-          <div>Grafo Humano: <b style="color: var(--accent-cyan);">Red Elevada (G_E)</b></div>
-          <div>Grafo Convoy: <b style="color: var(--accent-purple);">Laberinto (G_M)</b></div>
-        </div>
+        <div class="panel-title">🌉 Puentes & Blindados</div>
+        <div style="font-size: 0.72rem; color: var(--text-muted); margin-bottom: 4px;">Estado de Puentes:</div>
+        <div id="bridgeStatusList" class="bridge-list" style="margin-bottom: 10px;"></div>
+        <div style="font-size: 0.72rem; color: var(--text-muted); margin-bottom: 4px;">Máquinas del Convoy:</div>
+        <div id="convoyMachinesList" class="machine-list"></div>
       </div>
     </aside>
 
-    <!-- Main Visualizer Area -->
+    <!-- Main Viewport -->
     <main class="main-viewport">
       <div class="canvas-toolbar">
         <div class="stats-bar">
@@ -161,8 +274,19 @@
       <div class="canvas-container">
         <canvas id="simCanvas"></canvas>
 
-        <!-- Legend Overlay -->
-        <div class="legend-box">
+        <!-- Floating Canvas Quick-Bar -->
+        <div class="canvas-quickbar">
+          <button id="btnResetView" class="quickbar-btn" title="Ajustar mapa al centro">🎯 Centrar</button>
+          <label class="quickbar-toggle" title="Mostrar u ocultar etiquetas en las aristas">
+            <input type="checkbox" id="chkShowEdgeLabels" checked>
+            <span>🏷️ Etiquetas</span>
+          </label>
+          <button id="btnToggleLegend" class="quickbar-btn" title="Mostrar u ocultar leyenda">🗺️ Leyenda</button>
+          <span class="quickbar-hint">Rueda: Zoom · Arrastrar: Mover</span>
+        </div>
+
+        <!-- Legend Overlay (collapsed by default to keep map unobstructed) -->
+        <div id="legendBox" class="legend-box collapsed">
           <div style="font-weight: bold; color: var(--accent-cyan); margin-bottom: 4px;">Leyenda Visual</div>
           <div class="legend-item">
             <div class="legend-indicator" style="background: #238636; border: 1px solid #7ee787;"></div>
@@ -170,7 +294,7 @@
           </div>
           <div class="legend-item">
             <div class="legend-indicator" style="background: #6e40c9;"></div>
-            <span>Helipuerto [H]</span>
+            <span>Helipuerto [H] / Helicóptero 🚁</span>
           </div>
           <div class="legend-item">
             <div class="legend-indicator" style="background: #d29922; border: 1px dashed #f0883e;"></div>
@@ -186,27 +310,23 @@
           </div>
           <div class="legend-item">
             <div class="legend-indicator" style="background: #3fb950;"></div>
-            <span>Entrada Laberinto (IN)</span>
+            <span>Infantería (I) / A pie</span>
+          </div>
+          <div class="legend-item">
+            <div class="legend-indicator" style="background: #58a6ff; transform: rotate(45deg);"></div>
+            <span>Francotirador (F)</span>
           </div>
           <div class="legend-item">
             <div class="legend-indicator" style="background: #f85149;"></div>
-            <span>Salida Laberinto (OUT)</span>
+            <span>Artillero (A) / Salida OUT</span>
           </div>
           <div class="legend-item">
-            <div class="legend-indicator" style="background: rgba(63, 185, 80, 0.4); border: 1px solid #3fb950;"></div>
-            <span>Corredor Vigilado / Radio R_V</span>
+            <div class="legend-indicator" style="background: rgba(63, 185, 80, 0.25); border: 1px dashed #58a6ff;"></div>
+            <span>Radios R_V y Ataque R_ef</span>
           </div>
           <div class="legend-item">
             <div class="legend-indicator" style="background: #6e40c9; border: 2px solid #bc8cff; border-radius: 50%;"></div>
             <span>Convoy Blindado [C]</span>
-          </div>
-          <div class="legend-item">
-            <div class="legend-indicator" style="background: #bc8cff; height: 3px; border-radius: 2px;"></div>
-            <span>Ruta Recorrida (Historial)</span>
-          </div>
-          <div class="legend-item">
-            <div class="legend-indicator" style="background: repeating-linear-gradient(90deg, #58a6ff 0px, #58a6ff 3px, transparent 3px, transparent 6px); height: 3px;"></div>
-            <span>Ruta Proyectada Dijkstra</span>
           </div>
           <div class="legend-item">
             <div class="legend-indicator" style="background: linear-gradient(90deg, #484f58, #d29922, #f0883e, #f85149); border-radius: 2px;"></div>
@@ -222,7 +342,7 @@
       <!-- Bottom Panel (Audit Log) -->
       <section class="bottom-panel">
         <div class="bottom-header">
-          <span>📋 Bitácora de Decisiones & Auditoría de Algoritmos</span>
+          <span>📋 Bitácora Explicativa en Tiempo Real (Decisiones, Puentes, Logística y Combate)</span>
           <button id="btnClearLog" style="background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 0.75rem;">Limpiar Bitácora</button>
         </div>
         <div id="logViewer" class="log-content"></div>
@@ -231,8 +351,9 @@
   </div>
 
   <script src="/static/js/api.js"></script>
+  <script src="/static/js/log_viewer.js"></script>
   <script src="/static/js/renderer_2d.js"></script>
+  <script src="/static/js/controls.js"></script>
   <script src="/static/js/app.js"></script>
 </body>
 </html>
-

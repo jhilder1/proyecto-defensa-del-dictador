@@ -1,0 +1,90 @@
+{
+  "scenario_name": "Escenario 2: Asedio Complejo del General P. Tardo",
+  "config": {
+    "initial_budget": 2200.0,
+    "beta_elevation": 0.12,
+    "alpha_danger": 1.2,
+    "d0_normalization": 35.0,
+    "helicopter_cost": 150.0,
+    "helicopter_speed": 14.0,
+    "max_helicopter_uses": 4,
+    "helicopter_fleet_size": 2,
+    "total_repair_personnel": 4,
+    "max_time_limit": 300.0
+  },
+  "elevated_network": {
+    "nodes": [
+      { "id": "Base", "x": 6, "y": 50, "z": 2.0, "type": "Base" },
+      { "id": "H1", "x": 8, "y": 16, "z": 2.0, "type": "Helipuerto" },
+      { "id": "N1", "x": 22, "y": 50, "z": 4.0, "type": "Tránsito" },
+      { "id": "T1", "x": 30, "y": 32, "z": 10.0, "type": "Candidato", "surveillance_radius": 24.0 },
+      { "id": "T2", "x": 30, "y": 68, "z": 10.0, "type": "Candidato", "surveillance_radius": 24.0 },
+      { "id": "N2", "x": 45, "y": 18, "z": 5.0, "type": "Tránsito" },
+      { "id": "N3", "x": 45, "y": 82, "z": 5.0, "type": "Tránsito" },
+      { "id": "T3", "x": 58, "y": 32, "z": 12.0, "type": "Candidato", "surveillance_radius": 26.0 },
+      { "id": "T4", "x": 58, "y": 68, "z": 12.0, "type": "Candidato", "surveillance_radius": 26.0 },
+      { "id": "N4", "x": 76, "y": 50, "z": 6.0, "type": "Tránsito" },
+      { "id": "T5", "x": 88, "y": 30, "z": 10.0, "type": "Candidato", "surveillance_radius": 25.0 },
+      { "id": "T6", "x": 90, "y": 68, "z": 10.0, "type": "Candidato", "surveillance_radius": 25.0 },
+      { "id": "T_ISL", "x": 112, "y": 12, "z": 15.0, "type": "Candidato", "surveillance_radius": 30.0 }
+    ],
+    "edges": [
+      { "u": "Base", "v": "N1", "foot_time": 5.0, "moto_time": 2.0, "is_bridge": false },
+      { "u": "Base", "v": "H1", "foot_time": 9.0, "moto_time": 3.5, "is_bridge": false },
+      { "u": "N1", "v": "T1", "foot_time": 6.0, "moto_time": 2.0, "is_bridge": true, "max_resistance": 2, "reconstruction_duration": 18.0, "repair_personnel": 2 },
+      { "u": "N1", "v": "T2", "foot_time": 6.0, "moto_time": 2.0, "is_bridge": true, "max_resistance": 1, "reconstruction_duration": 20.0, "repair_personnel": 3 },
+      { "u": "T1", "v": "N2", "foot_time": 7.0, "moto_time": 2.5, "is_bridge": false },
+      { "u": "T2", "v": "N3", "foot_time": 7.0, "moto_time": 2.5, "is_bridge": false },
+      { "u": "N2", "v": "T3", "foot_time": 6.0, "moto_time": 2.0, "is_bridge": false },
+      { "u": "N3", "v": "T4", "foot_time": 6.0, "moto_time": 2.0, "is_bridge": false },
+      { "u": "T1", "v": "T3", "foot_time": 8.0, "moto_time": null, "is_bridge": false },
+      { "u": "T3", "v": "N4", "foot_time": 7.0, "moto_time": 2.5, "is_bridge": true, "max_resistance": 2, "reconstruction_duration": 16.0, "repair_personnel": 2 },
+      { "u": "T4", "v": "N4", "foot_time": 7.0, "moto_time": 2.5, "is_bridge": true, "max_resistance": 3, "reconstruction_duration": 15.0, "repair_personnel": 2 },
+      { "u": "N4", "v": "T5", "foot_time": 6.5, "moto_time": 2.5, "is_bridge": false },
+      { "u": "N4", "v": "T6", "foot_time": 6.5, "moto_time": 2.5, "is_bridge": false },
+      { "u": "T5", "v": "T6", "foot_time": 11.0, "moto_time": null, "is_bridge": false }
+    ]
+  },
+  "maze_network": {
+    "nodes": [
+      { "id": "IN", "x": 10, "y": 50, "is_entry": true, "is_exit": false },
+      { "id": "M1", "x": 24, "y": 50, "is_entry": false, "is_exit": false },
+      { "id": "M2", "x": 38, "y": 22, "is_entry": false, "is_exit": false },
+      { "id": "M3", "x": 68, "y": 22, "is_entry": false, "is_exit": false },
+      { "id": "M4", "x": 92, "y": 22, "is_entry": false, "is_exit": false },
+      { "id": "M5", "x": 46, "y": 50, "is_entry": false, "is_exit": false },
+      { "id": "M6", "x": 72, "y": 50, "is_entry": false, "is_exit": false },
+      { "id": "M7", "x": 92, "y": 50, "is_entry": false, "is_exit": false },
+      { "id": "M8", "x": 38, "y": 78, "is_entry": false, "is_exit": false },
+      { "id": "M_DEAD", "x": 38, "y": 94, "is_entry": false, "is_exit": false },
+      { "id": "M9", "x": 68, "y": 78, "is_entry": false, "is_exit": false },
+      { "id": "M10", "x": 92, "y": 78, "is_entry": false, "is_exit": false },
+      { "id": "OUT", "x": 112, "y": 50, "is_entry": false, "is_exit": true }
+    ],
+    "corridors": [
+      { "u": "IN", "v": "M1", "length": 14.0, "speed": 2.0 },
+      { "u": "M1", "v": "M2", "length": 31.3, "speed": 2.0 },
+      { "u": "M1", "v": "M5", "length": 22.0, "speed": 2.2 },
+      { "u": "M1", "v": "M8", "length": 31.3, "speed": 2.0 },
+      { "u": "M2", "v": "M3", "length": 30.0, "speed": 2.0 },
+      { "u": "M2", "v": "M5", "length": 29.1, "speed": 1.8 },
+      { "u": "M3", "v": "M4", "length": 24.0, "speed": 2.0 },
+      { "u": "M3", "v": "M6", "length": 28.3, "speed": 1.8 },
+      { "u": "M5", "v": "M6", "length": 26.0, "speed": 2.2 },
+      { "u": "M6", "v": "M7", "length": 20.0, "speed": 2.0 },
+      { "u": "M8", "v": "M_DEAD", "length": 16.0, "speed": 2.5 },
+      { "u": "M8", "v": "M5", "length": 29.1, "speed": 1.8 },
+      { "u": "M8", "v": "M9", "length": 30.0, "speed": 2.0 },
+      { "u": "M9", "v": "M6", "length": 28.3, "speed": 1.8 },
+      { "u": "M9", "v": "M10", "length": 24.0, "speed": 2.0 },
+      { "u": "M4", "v": "OUT", "length": 34.4, "speed": 2.0 },
+      { "u": "M7", "v": "OUT", "length": 20.0, "speed": 2.2 },
+      { "u": "M10", "v": "OUT", "length": 34.4, "speed": 2.0 }
+    ]
+  },
+  "convoy": {
+    "Tanque": 3,
+    "Camión": 3,
+    "Robot": 4
+  }
+}

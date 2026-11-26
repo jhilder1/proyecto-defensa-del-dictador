@@ -29,45 +29,44 @@ class TestPointHazardAdversarial:
     """Stress tests for D(q) and defense coverage rules."""
 
     def test_single_count_artillery_massive_clustering(self):
-        """CRITICAL: Single-count artillery rule under massive clustering.
-        Deploying 1, 2, 5, 20, and 100 gunners covering the exact same point
-        must NEVER exceed 20.0 damage rate from artillery.
+        """Per PDF Section 6: each Artillero soldier counts once (20.0 per soldier)
+        regardless of convoy size.
         """
         target_point = (10.0, 10.0)
 
-        # 1 gunner -> exactly 20.0
+        # 1 gunner -> 20.0
         g1 = [DefenseUnit(SoldierType.GUNNER, x=10.0, y=10.0, effective_range=5.0, unit_id="g1")]
         assert calculate_point_damage(target_point, g1) == pytest.approx(20.0)
 
-        # 2 gunners -> exactly 20.0
+        # 2 gunners -> 40.0
         g2 = g1 + [DefenseUnit(SoldierType.GUNNER, x=11.0, y=10.0, effective_range=5.0, unit_id="g2")]
-        assert calculate_point_damage(target_point, g2) == pytest.approx(20.0)
+        assert calculate_point_damage(target_point, g2) == pytest.approx(40.0)
 
-        # 5 gunners -> exactly 20.0
+        # 5 gunners -> 100.0
         g5 = g2 + [
             DefenseUnit(SoldierType.GUNNER, x=10.0, y=11.0, effective_range=5.0, unit_id="g3"),
             DefenseUnit(SoldierType.GUNNER, x=9.0, y=10.0, effective_range=5.0, unit_id="g4"),
             DefenseUnit(SoldierType.GUNNER, x=10.0, y=9.0, effective_range=5.0, unit_id="g5"),
         ]
-        assert calculate_point_damage(target_point, g5) == pytest.approx(20.0)
+        assert calculate_point_damage(target_point, g5) == pytest.approx(100.0)
 
-        # 20 gunners -> exactly 20.0
+        # 20 gunners -> 400.0
         g20 = [
             DefenseUnit(SoldierType.GUNNER, x=10.0 + 0.1 * i, y=10.0, effective_range=5.0, unit_id=f"g_{i}")
             for i in range(20)
         ]
-        assert calculate_point_damage(target_point, g20) == pytest.approx(20.0)
+        assert calculate_point_damage(target_point, g20) == pytest.approx(400.0)
 
-        # 100 gunners -> exactly 20.0
+        # 100 gunners -> 2000.0
         g100 = [
             DefenseUnit(SoldierType.GUNNER, x=10.0 + 0.01 * i, y=10.0, effective_range=5.0, unit_id=f"g100_{i}")
             for i in range(100)
         ]
-        assert calculate_point_damage(target_point, g100) == pytest.approx(20.0)
+        assert calculate_point_damage(target_point, g100) == pytest.approx(2000.0)
 
     def test_mixed_army_with_100_gunners_and_other_units(self):
-        """100 Gunners + 3 Snipers (3 * 25.0 = 75.0) + 4 Infantry (4 * 10.0 = 40.0)
-        Total D(q) must be exactly 20.0 + 75.0 + 40.0 = 135.0.
+        """100 Gunners (100 * 20.0 = 2000.0) + 3 Snipers (75.0) + 4 Infantry (40.0)
+        Total D(q) = 2115.0.
         """
         target_point = (0.0, 0.0)
         army = [
@@ -83,7 +82,7 @@ class TestPointHazardAdversarial:
             for i in range(4)
         ]
         damage = calculate_point_damage(target_point, army)
-        assert damage == pytest.approx(135.0)
+        assert damage == pytest.approx(2115.0)
 
     def test_boundary_distance_precision(self):
         """Unit at (0, 0) with range 10.0:

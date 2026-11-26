@@ -70,11 +70,11 @@ def calculate_point_damage(
     active_defenses: List[DefenseUnit],
 ) -> float:
     """Calculates instantaneous damage rate D(q) = sum(d_s * f_s) at point q.
-    
-    Single-count artillery rule:
-        Regardless of how many gunners reach q, gunner contribution is counted
-        at most ONCE:
-        D(q) = 10.0 * N_inf + 25.0 * N_snip + 20.0 * min(1, N_gun).
+
+    PDF Section 6 rule:
+        Each Artillero soldier contributes d_s * f_s = 100.0 * 0.2 = 20.0 once
+        per soldier in D(q), without multiplying by enemy machine count:
+        D(q) = 10.0 * N_inf + 25.0 * N_snip + 20.0 * N_gun.
     """
     n_inf = 0
     n_snip = 0
@@ -91,7 +91,7 @@ def calculate_point_damage(
             elif unit.is_gunner:
                 n_gun += 1
 
-    artillery_contribution = 20.0 if n_gun > 0 else 0.0
+    artillery_contribution = 20.0 * n_gun
     damage_rate = 10.0 * n_inf + 25.0 * n_snip + artillery_contribution
     return float(damage_rate)
 

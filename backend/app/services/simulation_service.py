@@ -602,6 +602,8 @@ class SimulationService:
 
         state.is_running = True
         state.is_paused = False
+        if state.game_result == "En preparación":
+            state.game_result = "En curso"
         tick_events: List[Dict[str, Any]] = []
 
         # 1. Movements (convoy + ground & air missions)
@@ -649,20 +651,23 @@ class SimulationService:
             state.add_event("GAME_OVER", end_msg, {"result": state.game_result})
             tick_events.append({"type": "GAME_OVER", "message": end_msg})
 
-        # 5. Update bridge reconstruction timers
-        rebuilt_bridges = self.scenario_service.elevated_graph.update_reconstruction_timers(dt)
+        # 5. Update bridge reconstruction timers (enforcing repair personnel pool)
+        rebuilt_bridges = self.scenario_service.elevated_graph.update_reconstruction_timers(
+            dt, simulation_state=state
+        )
         for bridge_id in rebuilt_bridges:
             reb_msg = f"Puente {bridge_id} reconstruido completamente y operativo."
             state.add_event("BRIDGE_REBUILT", reb_msg, {"edge": bridge_id})
             tick_events.append({"type": "BRIDGE_REBUILT", "message": reb_msg})
 
         # Refresh corridor reactive weights for UI telemetry
-        self.hazard_service.evaluate_all_corridors(alpha=self.alpha_danger)
+        hazards_res = self.hazard_service.evaluate_all_corridors(alpha=self.alpha_danger)
 
         return self.get_full_state(
             tick_combat=combat_res,
             rebuilt_bridges=rebuilt_bridges,
             tick_events=tick_events,
+            hazards_res=hazards_res,
         )
 
     def reset_full(self, alpha_danger: Optional[float] = None) -> Dict[str, Any]:
@@ -674,6 +679,8 @@ class SimulationService:
         ge.reset_tower_occupancies()
         state.budget_available = state.initial_budget
         state.budget_reserved = 0.0
+        state.remaining_helicopter_uses = state.max_helicopter_uses
+        state.available_repair_personnel = state.total_repair_personnel
         state.soldiers.clear()
         state.active_missions.clear()
         state.event_log.clear()
@@ -691,11 +698,17 @@ class SimulationService:
         tick_combat: Optional[Dict[str, Any]] = None,
         rebuilt_bridges: Optional[List[str]] = None,
         tick_events: Optional[List[Dict[str, Any]]] = None,
+        hazards_res: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """Returns comprehensive Stage 4 & 5 simulation state snapshot."""
         state = self.scenario_service.simulation_state
         ge = self.scenario_service.elevated_graph
         gm = self.scenario_service.maze_graph
+        hazards_data = (
+            hazards_res
+            if hazards_res is not None
+            else self.hazard_service.evaluate_all_corridors(alpha=self.alpha_danger)
+        )
 
         return {
             "clock": round(state.clock, 2),
@@ -704,11 +717,26 @@ class SimulationService:
             "is_paused": state.is_paused,
             "is_game_over": state.is_game_over,
             "game_result": state.game_result,
+            "max_avg_danger": hazards_data.get("max_avg_danger", 0.0),
+            "corridor_hazards": hazards_data.get("corridor_hazards", {}),
             "budget": {
                 "initial": round(state.initial_budget, 2),
                 "available": round(state.budget_available, 2),
                 "reserved": round(state.budget_reserved, 2),
                 "total": round(state.total_budget, 2),
+            },
+            "helicopter": {
+                "remaining_uses": state.remaining_helicopter_uses,
+                "max_uses": state.max_helicopter_uses,
+                "available_fleet": state.helicopters_available,
+                "fleet_size": state.helicopter_fleet_size,
+                "cost": state.helicopter_cost,
+                "speed": state.helicopter_speed,
+            },
+            "personnel": {
+                "total": state.total_repair_personnel,
+                "available": state.available_repair_personnel,
+                "busy": state.total_repair_personnel - state.available_repair_personnel,
             },
             "convoy": {
                 "current_node": self.current_node,

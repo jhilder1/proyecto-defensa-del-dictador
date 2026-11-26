@@ -48,6 +48,7 @@ def dispatch_air(req: DispatchAirRequest) -> Dict[str, Any]:
         return service.dispatch_air(
             soldier_ids=req.soldier_ids,
             destination_id=req.destination_id,
+            origin_id=req.origin_id,
         )
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))

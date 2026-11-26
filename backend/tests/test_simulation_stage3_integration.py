@@ -142,9 +142,9 @@ class TestSimulationApiEndpoints:
         client = TestClient(app)
         hazard_srv = HazardService.get_instance()
 
-        # Place deadly defense covering corridor IN-M1 (x=100 to x=220, y=380)
-        # Defense at (160, 380) with huge effective range and sniper damage
-        deadly_unit = DefenseUnit(SoldierType.SNIPER, x=160.0, y=380.0, effective_range=100.0, unit_id="deadly_snip")
+        # Place deadly defense covering corridor IN-M1 dynamically using its midpoint
+        q_mid = ScenarioService.get_instance().maze_graph.get_corridor_points("IN", "M1")[1]
+        deadly_unit = DefenseUnit(SoldierType.SNIPER, x=q_mid[0], y=q_mid[1], effective_range=100.0, unit_id="deadly_snip")
         hazard_srv.set_custom_defenses([deadly_unit])
 
         # Reset convoy
